@@ -93,35 +93,7 @@ img {
 }
 
 
-.card-title{
-    font-size: 22px;
-    color: #363958;
-    font-weight: 500;
-    font-weight: bold;
-}
 
-.price{
-    font-size: 30px;
-    font-weight: 500;
-    font-family: 'Oswald', sans-serif;
-    color: #363958;
-}
-
-.subscribe{
-    border-top: 1px solid #eee;
-}
-.subscribe .btn{
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-
-}
-.shadow-subscribe {
-    box-shadow: 0 20px 25px -12px rgba(0, 0, 0, 0.09);
-    transition-property: all;
-    transition-timing-function: ease;
-    transition-delay: 0s;
-    transition-duration: .3s;
-}
 
 .footer{
     border-bottom: 1px solid #343638;
