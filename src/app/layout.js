@@ -1,0 +1,33 @@
+import "./globals.css";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import MarqueeBar from "@/components/MarqueeBar";
+import ContentProtection from "@/components/ContentProtection";
+
+export const metadata = {
+  title: "সেবা হোমিও সদন | Homeopathy",
+  description: "সেবা হোমিও সদন - হোমিওপ্যাথি চিকিৎসা সেবা। আপনার সঠিক সিদ্ধান্তই আপনাকে রাখতে পারে সুস্থ এবং সুরক্ষিত।",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="bn">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
+        />
+      </head>
+      <body>
+        <ContentProtection />
+        <div className="top-banner">
+          <img src="/img/banner 1.png" alt="সেবা হোমিও সদন ব্যানার" />
+        </div>
+        <MarqueeBar />
+        <Navbar />
+        <main>{children}</main>
+        <Footer />
+      </body>
+    </html>
+  );
+}
