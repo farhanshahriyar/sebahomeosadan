@@ -1,7 +1,4 @@
-import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import MarqueeBar from "@/components/MarqueeBar";
+import "@/app/globals.css";
 import ContentProtection from "@/components/ContentProtection";
 
 export const metadata = {
@@ -20,13 +17,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <ContentProtection />
-        <div className="top-banner">
-          <img src="/img/banner 1.png" alt="সেবা হোমিও সদন ব্যানার" />
-        </div>
-        <MarqueeBar />
-        <Navbar />
-        <main>{children}</main>
-        <Footer />
+        {children}
       </body>
     </html>
   );
