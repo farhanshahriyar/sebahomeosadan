@@ -47,7 +47,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="footer-bottom">
-          © {new Date().getFullYear()} সেবা হোমিও সদন। সর্বস্বত্ব সংরক্ষিত।
+          © {new Date().getFullYear()} Good Health Homeo Care। সর্বস্বত্ব সংরক্ষিত।
         </div>
       </div>
     </footer>

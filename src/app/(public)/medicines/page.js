@@ -2,7 +2,7 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 
 export const metadata = {
-  title: "ওষুধ পরিচিতি | সেবা হোমিও সদন",
+  title: "ওষুধ পরিচিতি | Good Health Homeo Care",
   description: "হোমিওপ্যাথি ওষুধের তালিকা এবং পরিচিতি। একোনাইটাম নেপেলাস, এ্যাকটিয়া রেসিমোসা সহ বিভিন্ন ওষুধ সম্পর্কে জানুন।",
 };
 

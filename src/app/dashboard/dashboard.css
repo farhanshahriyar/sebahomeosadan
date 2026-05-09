@@ -35,9 +35,45 @@
   margin-right: 10px;
 }
 
-.dashboard-nav {
-  padding: 20px 0;
+.view-switcher-container {
+  padding: 15px 20px 0;
+}
+
+.view-switcher {
+  display: flex;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 4px;
+  width: 100%;
+}
+
+.view-btn {
   flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.view-btn.active {
+  background: var(--gold);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.dashboard-nav {
+  padding: 20px 0 50px 0;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .dashboard-nav-item {

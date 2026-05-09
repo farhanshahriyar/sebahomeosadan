@@ -15,11 +15,16 @@ export default async function DashboardLayout({ children }) {
   }
 
   // Fetch user profile/role from a profiles table (fallback to email metadata)
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("full_name, role, avatar_url")
     .eq("id", user.id)
     .single();
+
+  // Debug: log to server console
+  console.log("[Dashboard] user.id:", user.id);
+  console.log("[Dashboard] profile:", profile);
+  console.log("[Dashboard] profileError:", profileError);
 
   const userInfo = {
     name: profile?.full_name || user.email?.split("@")[0] || "User",
@@ -27,6 +32,8 @@ export default async function DashboardLayout({ children }) {
     role: profile?.role || "author",
     avatar: profile?.avatar_url || null,
   };
+
+  console.log("[Dashboard] resolved userInfo:", userInfo);
 
   return <DashboardShell userInfo={userInfo}>{children}</DashboardShell>;
 }

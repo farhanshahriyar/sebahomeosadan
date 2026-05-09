@@ -6,7 +6,7 @@ export default function PublicLayout({ children }) {
   return (
     <>
       <div className="top-banner">
-        <img src="/img/banner.png" alt="সেবা হোমিও সদন ব্যানার" />
+        <img src="/img/banner.png" alt="Good Health Homeo Care ব্যানার" />
       </div>
       <MarqueeBar />
       <Navbar />

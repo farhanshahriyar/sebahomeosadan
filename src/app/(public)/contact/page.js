@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "যোগাযোগ | সেবা হোমিও সদন",
-  description: "সেবা হোমিও সদনের সাথে যোগাযোগ করুন। ঠিকানা: খঞ্জনপুর, জয়পুরহাট, বাংলাদেশ।",
+  title: "যোগাযোগ | Good Health Homeo Care",
+  description: "Good Health Homeo Care এর সাথে যোগাযোগ করুন। ঠিকানা: খঞ্জনপুর, জয়পুরহাট, বাংলাদেশ।",
 };
 
 export default function ContactPage() {
@@ -62,7 +62,7 @@ export default function ContactPage() {
             src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14452.090196255396!2d88.99680482504839!3d25.101098024376792!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39fc91e5a27bc89d%3A0xaa1008c50e27f342!2sKhanjanpur!5e0!3m2!1sen!2sbd!4v1622114571933!5m2!1sen!2sbd"
             allowFullScreen
             loading="lazy"
-            title="সেবা হোমিও সদন মানচিত্র"
+            title="Good Health Homeo Care মানচিত্র"
           />
         </div>
       </div>

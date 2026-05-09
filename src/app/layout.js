@@ -2,8 +2,8 @@ import "@/app/globals.css";
 import ContentProtection from "@/components/ContentProtection";
 
 export const metadata = {
-  title: "সেবা হোমিও সদন | Homeopathy",
-  description: "সেবা হোমিও সদন - হোমিওপ্যাথি চিকিৎসা সেবা। আপনার সঠিক সিদ্ধান্তই আপনাকে রাখতে পারে সুস্থ এবং সুরক্ষিত।",
+  title: "Good Health Homeo Care | Homeopathy",
+  description: "Good Health Homeo Care - হোমিওপ্যাথি চিকিৎসা সেবা। আপনার সঠিক সিদ্ধান্তই আপনাকে রাখতে পারে সুস্থ এবং সুরক্ষিত।",
 };
 
 export default function RootLayout({ children }) {

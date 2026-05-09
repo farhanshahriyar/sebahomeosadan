@@ -1,20 +1,48 @@
-export default function AdminDashboard() {
+import { createClient } from "@/lib/supabase/server";
+import AddUserButton from "@/components/dashboard/AddUserButton";
+import UserRoleSelect from "@/components/dashboard/UserRoleSelect";
+
+export default async function AdminDashboard() {
+  const supabase = await createClient();
+  
+  // Fetch all profiles
+  const { data: users, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  // Get auth metadata to match emails (if possible via rpc, otherwise we just show profiles data)
+  // Since `profiles` doesn't store email, we might have an issue displaying emails!
+  // Supabase profiles table created earlier: id, full_name, role, avatar_url, created_at, updated_at
+  // We can't fetch emails without admin access. For now, we'll display the ID or fetch emails if we use admin client.
+  // Actually, we can fetch emails using supabaseAdmin in a server action, or we just don't show email.
+
+  const adminCount = users?.filter(u => u.role === "admin" || u.role === "super_admin").length || 0;
+  const authorCount = users?.filter(u => u.role === "author").length || 0;
+
+  // Real database health check
+  let dbOk = true;
+  try {
+    const { error: pingError } = await supabase.from("profiles").select("id").limit(1);
+    if (pingError) dbOk = false;
+  } catch {
+    dbOk = false;
+  }
+
   return (
     <>
       <div className="dashboard-header">
         <div>
-          <h1>Admin Dashboard</h1>
+          <h1>Manage Users</h1>
           <div className="breadcrumb">
-            <a href="/dashboard">Dashboard</a> / Admin Panel
+            <a href="/dashboard">Dashboard</a> / Manage Users
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button className="btn btn-accent" style={{ padding: '10px 20px', fontSize: '14px' }}>
             <i className="fas fa-cog"></i> Site Settings
           </button>
-          <button className="btn btn-primary" style={{ padding: '10px 20px', fontSize: '14px' }}>
-            <i className="fas fa-user-plus"></i> Add User
-          </button>
+          <AddUserButton />
         </div>
       </div>
 
@@ -24,7 +52,7 @@ export default function AdminDashboard() {
             <i className="fas fa-users-cog"></i>
           </div>
           <div className="stat-info">
-            <h3>4</h3>
+            <h3>{adminCount}</h3>
             <p>Admin Users</p>
           </div>
         </div>
@@ -34,20 +62,22 @@ export default function AdminDashboard() {
             <i className="fas fa-user-edit"></i>
           </div>
           <div className="stat-info">
-            <h3>12</h3>
+            <h3>{authorCount}</h3>
             <p>Active Authors</p>
           </div>
         </div>
         
-        <div className="stat-card accent">
-          <div className="stat-icon">
-            <i className="fas fa-shield-alt"></i>
+        <a href="/dashboard/status" style={{ textDecoration: 'none' }}>
+          <div className={`stat-card ${dbOk ? 'accent' : 'danger'}`}>
+            <div className="stat-icon">
+              <i className={`fas ${dbOk ? 'fa-shield-alt' : 'fa-exclamation-triangle'}`}></i>
+            </div>
+            <div className="stat-info">
+              <h3>System</h3>
+              <p>{dbOk ? 'Healthy' : 'Issue Detected'}</p>
+            </div>
           </div>
-          <div className="stat-info">
-            <h3>System</h3>
-            <p>Healthy</p>
-          </div>
-        </div>
+        </a>
       </div>
 
       <div className="dashboard-panel">
@@ -59,46 +89,31 @@ export default function AdminDashboard() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Email</th>
+                <th>User ID</th>
                 <th>Role</th>
-                <th>Status</th>
                 <th>Joined</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td><strong>Md. Amirul Islam</strong></td>
-                <td>amirul1068@gmail.com</td>
-                <td><span className="status-badge status-published">Super Admin</span></td>
-                <td>Active</td>
-                <td>Jan 10, 2021</td>
-                <td>
-                  <button className="action-btn action-edit"><i className="fas fa-edit"></i></button>
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Dr. Farhan</strong></td>
-                <td>farhan@sebahomeo.com</td>
-                <td><span className="status-badge status-review">Author</span></td>
-                <td>Active</td>
-                <td>Feb 22, 2021</td>
-                <td>
-                  <button className="action-btn action-edit"><i className="fas fa-edit"></i></button>
-                  <button className="action-btn action-delete"><i className="fas fa-ban"></i></button>
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Guest User</strong></td>
-                <td>guest@example.com</td>
-                <td><span className="status-badge status-draft">Subscriber</span></td>
-                <td>Inactive</td>
-                <td>Mar 05, 2021</td>
-                <td>
-                  <button className="action-btn action-edit"><i className="fas fa-edit"></i></button>
-                  <button className="action-btn action-delete"><i className="fas fa-ban"></i></button>
-                </td>
-              </tr>
+              {users?.map((user) => (
+                <tr key={user.id}>
+                  <td><strong>{user.full_name || "Unknown"}</strong></td>
+                  <td style={{ fontSize: '12px', color: '#666' }}>{user.id.substring(0, 8)}...</td>
+                  <td>
+                    <UserRoleSelect userId={user.id} currentRole={user.role} />
+                  </td>
+                  <td>{new Date(user.created_at).toLocaleDateString()}</td>
+                  <td>
+                    <button className="action-btn action-delete"><i className="fas fa-ban"></i></button>
+                  </td>
+                </tr>
+              ))}
+              {!users?.length && (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: "center", padding: "20px" }}>No users found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

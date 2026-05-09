@@ -1,7 +1,7 @@
 import Sidebar from "@/components/Sidebar";
 
 export const metadata = {
-  title: "এনাটমি, ফিজিওলাজি ও প্যাথলজি | সেবা হোমিও সদন",
+  title: "এনাটমি, ফিজিওলাজি ও প্যাথলজি | Good Health Homeo Care",
   description: "এনাটমি হলো শরীরের গঠন সম্পর্কে জ্ঞান। দেহতন্ত্রের প্রাথমিক জ্ঞান সম্পর্কে বিস্তারিত জানুন।",
 };
 

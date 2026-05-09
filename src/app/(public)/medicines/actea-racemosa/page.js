@@ -1,7 +1,7 @@
 import Sidebar from "@/components/Sidebar";
 
 export const metadata = {
-  title: "এ্যাকটিয়া রেসিমোসা | সেবা হোমিও সদন",
+  title: "এ্যাকটিয়া রেসিমোসা | Good Health Homeo Care",
   description: "এ্যাকটিয়া রেসিমোসা [Actea Racemosa] - হোমিওপ্যাথি ওষুধের বিস্তারিত তথ্য।",
 };
 

@@ -65,7 +65,7 @@ export default function Navbar() {
     <nav className="navbar" id="main-navbar">
       <div className="container">
         <Link href="/" className="nav-brand">
-          সেবা হোমিও সদন
+          Good Health Homeo Care
         </Link>
         <button
           className="nav-toggle"

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
+import { useState } from "react";
 
 export default function DashboardShell({ userInfo, children }) {
   const pathname = usePathname();
@@ -14,13 +15,40 @@ export default function DashboardShell({ userInfo, children }) {
         ? "Admin"
         : "Author";
 
+  // If user is admin, they can toggle their view mode
+  const [viewMode, setViewMode] = useState(isAdmin ? "admin" : "author");
+
+  // Determine if admin features should be visible
+  const showAdminFeatures = isAdmin && viewMode === "admin";
+
   return (
     <div className="dashboard-layout">
       {/* Sidebar */}
       <aside className="dashboard-sidebar">
         <Link href="/dashboard" className="dashboard-brand">
-          <i className="fas fa-leaf"></i> সেবা হোমিও সদন
+          <i className="fas fa-leaf"></i> Good Health Homeo Care
         </Link>
+        
+        {/* View Switcher (Only for Admins) */}
+        {isAdmin && (
+          <div className="view-switcher-container">
+            <div className="view-switcher">
+              <button 
+                className={`view-btn ${viewMode === 'author' ? 'active' : ''}`}
+                onClick={() => setViewMode('author')}
+              >
+                Author
+              </button>
+              <button 
+                className={`view-btn ${viewMode === 'admin' ? 'active' : ''}`}
+                onClick={() => setViewMode('admin')}
+              >
+                Admin
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="dashboard-nav">
           <div className="dashboard-nav-title">Menu</div>
           <Link
@@ -35,12 +63,12 @@ export default function DashboardShell({ userInfo, children }) {
           >
             <i className="fas fa-pen-nib"></i> Author Panel
           </Link>
-          {isAdmin && (
+          {showAdminFeatures && (
             <Link
               href="/dashboard/admin"
               className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin") ? "active" : ""}`}
             >
-              <i className="fas fa-user-shield"></i> Admin Panel
+              <i className="fas fa-users-cog"></i> Manage Users
             </Link>
           )}
 
@@ -56,6 +84,14 @@ export default function DashboardShell({ userInfo, children }) {
           </Link>
 
           <div className="dashboard-nav-title">Settings</div>
+          {showAdminFeatures && (
+            <Link 
+              href="/dashboard/status" 
+              className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/status") ? "active" : ""}`}
+            >
+              <i className="fas fa-server"></i> Status
+            </Link>
+          )}
           <Link href="/dashboard" className="dashboard-nav-item">
             <i className="fas fa-cog"></i> Configuration
           </Link>

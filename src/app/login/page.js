@@ -84,7 +84,7 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="login-header">
           <i className="fas fa-leaf login-logo"></i>
-          <h1>সেবা হোমিও সদন</h1>
+          <h1>Good Health Homeo Care</h1>
           <p>Dashboard Login</p>
         </div>
 
