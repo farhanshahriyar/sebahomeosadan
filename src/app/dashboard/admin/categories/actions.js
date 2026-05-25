@@ -20,9 +20,10 @@ async function checkAdminRole(supabase) {
 export async function saveCategoryAction(formData) {
   const supabase = await createClient();
   const isAdmin = await checkAdminRole(supabase);
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!isAdmin) {
-    return { error: "உங்களுக்கு இந்த செயல் செய்ய அனுமதி இல்லை (Access Denied)" };
+  if (!user) {
+    return { error: "দয়া করে প্রথমে লগইন করুন।" };
   }
 
   const id = formData.get("id");
@@ -30,13 +31,17 @@ export async function saveCategoryAction(formData) {
   const slug = formData.get("slug")?.trim();
   const description = formData.get("description")?.trim();
   const sortOrder = parseInt(formData.get("sort_order") || "0", 10);
-  const isActive = formData.get("is_active") === "true";
+  const parentId = formData.get("parent_id") || null;
+  // If not admin, is_active is ALWAYS false (suggestions require admin approval)
+  const isActive = isAdmin ? (formData.get("is_active") === "true") : false;
+
+  if (!isAdmin && id) {
+    return { error: "ক্যাটাগরি সম্পাদনা করার অনুমতি আপনার নেই (Access Denied)।" };
+  }
 
   if (!name || !slug) {
     return { error: "নাম এবং স্লাগ অবশ্যই পূরণ করতে হবে।" };
   }
-
-  const { data: { user } } = await supabase.auth.getUser();
 
   const categoryData = {
     name,
@@ -44,7 +49,8 @@ export async function saveCategoryAction(formData) {
     description: description || null,
     sort_order: sortOrder,
     is_active: isActive,
-    created_by: user.id
+    created_by: user.id,
+    parent_id: parentId || null
   };
 
   try {

@@ -149,6 +149,7 @@ export default function CategoriesAdminPage() {
                 <tr>
                   <th>ক্রম (Sort)</th>
                   <th>নাম (Name)</th>
+                  <th>প্রকার (Type/Parent)</th>
                   <th>স্লাগ (Slug)</th>
                   <th>বর্ণনা (Description)</th>
                   <th>অবস্থা (Status)</th>
@@ -164,8 +165,19 @@ export default function CategoriesAdminPage() {
                       </span>
                     </td>
                     <td><strong>{cat.name}</strong></td>
+                    <td>
+                      {cat.parent_id ? (
+                        <span style={{ fontSize: "12px", background: "#fff3cd", color: "#856404", padding: "4px 8px", borderRadius: "4px", fontWeight: "500" }}>
+                          টপিক (অভিভাবক: {categories.find(p => p.id === cat.parent_id)?.name || "অজানা"})
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "12px", background: "#cce5ff", color: "#004085", padding: "4px 8px", borderRadius: "4px", fontWeight: "500" }}>
+                          প্রধান বিষয় (Subject)
+                        </span>
+                      )}
+                    </td>
                     <td style={{ fontFamily: "monospace", fontSize: "13px" }}>{cat.slug}</td>
-                    <td style={{ color: "#666", maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <td style={{ color: "#666", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {cat.description || "—"}
                     </td>
                     <td>

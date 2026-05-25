@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function DashboardShell({ userInfo, children }) {
   const pathname = usePathname();
@@ -18,15 +18,38 @@ export default function DashboardShell({ userInfo, children }) {
   // If user is admin, they can toggle their view mode
   const [viewMode, setViewMode] = useState(isAdmin ? "admin" : "author");
 
+  // Sidebar collapse state
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved === "true") setCollapsed(true);
+  }, []);
+
+  const toggleSidebar = () => {
+    setCollapsed((prev) => {
+      localStorage.setItem("sidebar-collapsed", String(!prev));
+      return !prev;
+    });
+  };
+
   // Determine if admin features should be visible
   const showAdminFeatures = isAdmin && viewMode === "admin";
 
   return (
-    <div className="dashboard-layout">
+    <div className={`dashboard-layout${collapsed ? " sidebar-collapsed" : ""}`}>
       {/* Sidebar */}
-      <aside className="dashboard-sidebar">
+      <aside className={`dashboard-sidebar${collapsed ? " collapsed" : ""}`}>
+        {/* Collapse Toggle */}
+        <button
+          className="sidebar-toggle"
+          onClick={toggleSidebar}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <i className={`fas fa-chevron-${collapsed ? "right" : "left"}`} />
+        </button>
         <Link href="/dashboard" className="dashboard-brand">
-          <i className="fas fa-leaf"></i> Good Health Homeo Care
+          <i className="fas fa-leaf"></i> <span>Good Health Homeo Care</span>
         </Link>
         
         {/* View Switcher (Only for Admins) */}
@@ -37,31 +60,31 @@ export default function DashboardShell({ userInfo, children }) {
                 className={`view-btn ${viewMode === 'author' ? 'active' : ''}`}
                 onClick={() => setViewMode('author')}
               >
-                Author
+                <span>Author</span>
               </button>
               <button 
                 className={`view-btn ${viewMode === 'admin' ? 'active' : ''}`}
                 onClick={() => setViewMode('admin')}
               >
-                Admin
+                <span>Admin</span>
               </button>
             </div>
           </div>
         )}
 
         <div className="dashboard-nav">
-          <div className="dashboard-nav-title">Menu</div>
+          <div className="dashboard-nav-title"><span>Menu</span></div>
           <Link
             href="/dashboard"
             className={`dashboard-nav-item ${pathname === "/dashboard" ? "active" : ""}`}
           >
-            <i className="fas fa-home"></i> Overview
+            <i className="fas fa-home"></i> <span>Overview</span>
           </Link>
           <Link
             href="/dashboard/author"
             className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/author") ? "active" : ""}`}
           >
-            <i className="fas fa-pen-nib"></i> Author Panel
+            <i className="fas fa-pen-nib"></i> <span>Author Panel</span>
           </Link>
           {showAdminFeatures && (
             <>
@@ -69,52 +92,52 @@ export default function DashboardShell({ userInfo, children }) {
                 href="/dashboard/admin"
                 className={`dashboard-nav-item ${pathname === "/dashboard/admin" ? "active" : ""}`}
               >
-                <i className="fas fa-users-cog"></i> Manage Users
+                <i className="fas fa-users-cog"></i> <span>Manage Users</span>
               </Link>
               <Link
                 href="/dashboard/admin/categories"
                 className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/categories") ? "active" : ""}`}
               >
-                <i className="fas fa-tags"></i> Manage Categories
+                <i className="fas fa-tags"></i> <span>Manage Categories</span>
               </Link>
               <Link
                 href="/dashboard/admin/review"
                 className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/review") ? "active" : ""}`}
               >
-                <i className="fas fa-clipboard-check"></i> Editorial Review
+                <i className="fas fa-clipboard-check"></i> <span>Editorial Review</span>
               </Link>
             </>
           )}
 
-          <div className="dashboard-nav-title">Content</div>
+          <div className="dashboard-nav-title"><span>Content</span></div>
           <Link href="/dashboard" className="dashboard-nav-item">
-            <i className="fas fa-file-alt"></i> Posts
+            <i className="fas fa-file-alt"></i> <span>Posts</span>
           </Link>
           <Link href="/dashboard" className="dashboard-nav-item">
-            <i className="fas fa-pills"></i> Medicines
+            <i className="fas fa-pills"></i> <span>Medicines</span>
           </Link>
           <Link href="/dashboard" className="dashboard-nav-item">
-            <i className="fas fa-comments"></i> Testimonials
+            <i className="fas fa-comments"></i> <span>Testimonials</span>
           </Link>
 
-          <div className="dashboard-nav-title">Settings</div>
+          <div className="dashboard-nav-title"><span>Settings</span></div>
           {showAdminFeatures && (
             <Link 
               href="/dashboard/status" 
               className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/status") ? "active" : ""}`}
             >
-              <i className="fas fa-server"></i> Status
+              <i className="fas fa-server"></i> <span>Status</span>
             </Link>
           )}
           <Link href="/dashboard" className="dashboard-nav-item">
-            <i className="fas fa-cog"></i> Configuration
+            <i className="fas fa-cog"></i> <span>Configuration</span>
           </Link>
           <Link href="/" className="dashboard-nav-item">
-            <i className="fas fa-globe"></i> View Website
+            <i className="fas fa-globe"></i> <span>View Website</span>
           </Link>
           <form action={logout}>
             <button type="submit" className="dashboard-nav-item" style={{ width: '100%', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>
-              <i className="fas fa-sign-out-alt"></i> Logout
+              <i className="fas fa-sign-out-alt"></i> <span>Logout</span>
             </button>
           </form>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { saveCategoryAction } from "@/app/dashboard/admin/categories/actions";
+import { createClient } from "@/lib/supabase/client";
 
 function generateSlug(text) {
   return text
@@ -20,6 +21,24 @@ export default function CategoryModal({ category, onClose }) {
   const [isActive, setIsActive] = useState(category ? category.is_active : true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [parentCategories, setParentCategories] = useState([]);
+  const [parentId, setParentId] = useState(category?.parent_id || "");
+
+  // Fetch parent categories on mount
+  useEffect(() => {
+    async function fetchParentCategories() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("categories")
+        .select("id, name")
+        .is("parent_id", null);
+      if (data) {
+        // Exclude current category if editing to prevent cycles
+        setParentCategories(data.filter((c) => c.id !== category?.id));
+      }
+    }
+    fetchParentCategories();
+  }, [category?.id]);
 
   // Auto-generate slug from name if creating a new category
   useEffect(() => {
@@ -51,6 +70,7 @@ export default function CategoryModal({ category, onClose }) {
     formData.append("description", description);
     formData.append("sort_order", sortOrder.toString());
     formData.append("is_active", isActive.toString());
+    formData.append("parent_id", parentId);
 
     const result = await saveCategoryAction(formData);
 
@@ -88,6 +108,30 @@ export default function CategoryModal({ category, onClose }) {
               required
               placeholder="যেমন: ওষুধ পরিচিতি, স্বাস্থ্য কথা"
             />
+          </div>
+
+          <div className="form-group">
+            <label>অভিভাবক বিষয় (Parent Subject)</label>
+            <select
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                border: "1px solid #ddd",
+                borderRadius: "6px",
+                fontFamily: "inherit",
+                fontSize: "14px",
+                backgroundColor: "#fff"
+              }}
+            >
+              <option value="">কোনোটিই নয় (এটি নিজেই একটি প্রধান বিষয়)</option>
+              {parentCategories.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="form-group">

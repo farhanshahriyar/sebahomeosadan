@@ -25,11 +25,23 @@ export default async function PublicLayout({ children }) {
     const supabase = createPublicClient();
     const { data } = await supabase
       .from("categories")
-      .select("id, name, slug, description")
+      .select("id, name, slug, description, parent_id")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
     if (data) {
-      categories = data;
+      // Find main categories (subjects)
+      const subjects = data.filter((c) => !c.parent_id);
+      // Map topics as children of subjects
+      categories = subjects.map((subject) => {
+        const topics = data.filter((c) => c.parent_id === subject.id);
+        return {
+          ...subject,
+          children: topics.length > 0 ? topics.map((t) => ({
+            label: t.name,
+            href: `/articles?category=${t.slug}`,
+          })) : null,
+        };
+      });
     }
   } catch (e) {
     // Silently fail — navbar will fall back to static items only

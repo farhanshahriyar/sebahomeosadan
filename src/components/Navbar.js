@@ -19,6 +19,7 @@ export default function Navbar({ categories = [] }) {
   const dynamicCategoryItems = categories.map((cat) => ({
     label: cat.name,
     href: `/articles?category=${cat.slug}`,
+    children: cat.children || null,
   }));
 
   const navItems = [
