@@ -1,16 +1,57 @@
-"use client";
-import { useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import Testimonials from "@/components/Testimonials";
 
-const testimonials = [
-  { name: "Samuel Hahnemann", title: "Founder of Homeopathy", img: "/img/homeo scientist/s1.jpg", text: "চিকিৎসা বিজ্ঞান হলো অভিজ্ঞতার বিজ্ঞান; এর উদ্দেশ্য হলো ওষুধের মাধ্যমে রোগ নির্মূল করা। রোগের জ্ঞান, ওষুধের জ্ঞান এবং তাদের প্রয়োগের জ্ঞান - এই তিনটি মিলে চিকিৎসা বিজ্ঞান গঠিত।" },
-  { name: "J.T. Kent", title: "Homeopathy Scientist", img: "/img/homeo scientist/s2.jpg", text: "হোমিওপ্যাথি হলো একমাত্র চিকিৎসা পদ্ধতি যা রোগীর সামগ্রিক অবস্থা বিবেচনা করে চিকিৎসা করে। এটি শুধু রোগ নয়, রোগীকে চিকিৎসা করে।" },
-  { name: "William Boericke", title: "Homeopathy Author", img: "/img/homeo scientist/s3.png", text: "হোমিওপ্যাথির মূলনীতি হলো 'সদৃশ দ্বারা সদৃশের চিকিৎসা'। এই নীতি অনুসরণ করে সঠিক ওষুধ নির্বাচন করলে রোগ আরোগ্য সম্ভব।" },
-  { name: "E.B. Nash", title: "Clinical Practitioner", img: "/img/homeo scientist/s4.jpg", text: "হোমিওপ্যাথি চিকিৎসায় সর্বোপরি মানসিক লক্ষণাবলী লক্ষ্য রাখতে হবে। মানসিক ও দৈহিক উদ্বেগ, অস্থিরতা বর্তমান আছে কি না তা পর্যবেক্ষণ করতে হবে।" },
-];
+export const metadata = {
+  title: "Good Health Homeo Care | চিকিৎসা সেবা ও তথ্য",
+  description: "আপনার সঠিক সিদ্ধান্তই আপনাকে রাখতে পারে সুস্থ এবং সুরক্ষিত। হোমিওপ্যাথি চিকিৎসা সেবা ও পরামর্শ কেন্দ্র।",
+};
 
-export default function HomePage() {
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
+export default async function HomePage() {
+  const supabase = await createClient();
+
+  // Fetch the latest 3 published articles
+  const { data: articles, error } = await supabase
+    .from("articles")
+    .select("*, categories(name)")
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(3);
+
+  if (error) {
+    console.error("Error fetching homepage articles:", error);
+  }
+
+  // Fallback static articles in case database is empty or queries fail
+  const fallbackArticles = [
+    {
+      id: "fallback-1",
+      title: "হোমিওপ্যাথি চিকিৎসাকে জনপ্রিয় করা হবে",
+      author_name: "রাইজিংবিডি.কম",
+      excerpt: "চিকিৎসা ক্ষেত্রে হোমিওপ্যাথি ব্যবস্থাকে জনপ্রিয় এবং সাধারন মানুষের দোড়গোড়ায় পৌঁছে দেওয়ার উদ্যোগ নেওয়া হবে বলে জানিয়েছেন অর্থমন্ত্রী।",
+      cover_image: "/img/latest news/sim1.JPG",
+      isExternal: true,
+      href: "https://www.risingbd.com/health/news/251846"
+    },
+    {
+      id: "fallback-2",
+      title: "এনাটমি, ফিজিওলজি - দেহতন্ত্রের প্রাথমিক জ্ঞান",
+      author_name: "মোঃ আমিরুল ইসলাম প্রামানিক",
+      excerpt: "এনাটমি হলো শরীরের গঠন সম্পর্কে জ্ঞান এবং বিভিন্ন অংশের সঙ্গে অন্যটির সম্পর্ক। স্থানিক বা Regional এনাটমি হলো...",
+      cover_image: "/img/img1.png",
+      href: "/anatomy"
+    },
+    {
+      id: "fallback-3",
+      title: "একোনাইটাম নেপেলাস",
+      author_name: "মোঃ আমিরুল ইসলাম প্রামানিক",
+      excerpt: "যুবক-যুবtীদের বিশেষতঃ বালিকাদের যারা পূর্ণ রক্তপ্রধান ধাতুবিশিষ্ট এবং অলসভাবে সময় কাটায়...",
+      cover_image: "/img/img2.png",
+      href: "/medicines/aconitum-napellus"
+    }
+  ];
+
+  const displayArticles = articles && articles.length > 0 ? articles : fallbackArticles;
 
   return (
     <>
@@ -49,86 +90,64 @@ export default function HomePage() {
             <p>আমাদের সর্বশেষ ব্লগ পোস্ট দেখুন</p>
           </div>
           <div className="news-grid">
-            <div className="news-card" id="news-card-1">
-              <img src="/img/latest news/sim1.JPG" alt="হোমিওপ্যাথি চিকিৎসা সংবাদ" />
-              <div className="news-card-body">
-                <h3>হোমিওপ্যাথি চিকিৎসাকে জনপ্রিয় করা হবে</h3>
-                <span className="author">রাইজিংবিডি.কম</span>
-                <p>
-                  চিকিৎসা ক্ষেত্রে হোমিওপ্যাথি ব্যবস্থাকে জনপ্রিয় এবং সাধারন
-                  মানুষের দোড়গোড়ায় পৌঁছে দেওয়ার উদ্যোগ নেওয়া হবে বলে
-                  জানিয়েছেন অর্থমন্ত্রী।
-                </p>
-                <a href="https://www.risingbd.com/health/news/251846" className="read-more" target="_blank" rel="noopener noreferrer">
-                  আরও পড়ুন →
-                </a>
-              </div>
-            </div>
+            {displayArticles.map((article) => {
+              const isExternal = article.isExternal;
+              const href = isExternal ? article.href : `/articles/${article.slug || ""}`;
+              const linkProps = isExternal 
+                ? { href, target: "_blank", rel: "noopener noreferrer" } 
+                : { href: article.href || href };
 
-            <div className="news-card" id="news-card-2">
-              <img src="/img/img1.png" alt="এনাটমি ফিজিওলজি" />
-              <div className="news-card-body">
-                <h3>এনাটমি, ফিজিওলজি - দেহতন্ত্রের প্রাথমিক জ্ঞান</h3>
-                <span className="author">মোঃ আমিরুল ইসলাম প্রামানিক</span>
-                <p>
-                  এনাটমি হলো শরীরের গঠন সম্পর্কে জ্ঞান এবং বিভিন্ন অংশের সঙ্গে
-                  অন্যটির সম্পর্ক। স্থানিক বা Regional এনাটমি হলো...
-                </p>
-                <Link href="/anatomy" className="read-more">
-                  আরও পড়ুন →
-                </Link>
-              </div>
-            </div>
-
-            <div className="news-card" id="news-card-3">
-              <img src="/img/img2.png" alt="একোনাইটাম নেপেলাস" />
-              <div className="news-card-body">
-                <h3>একোনাইটাম নেপেলাস</h3>
-                <span className="author">মোঃ আমিরুল ইসলাম প্রামানিক</span>
-                <p>
-                  যুবক-যুবতীদের বিশেষতঃ বালিকাদের যারা পূর্ণ রক্তপ্রধান
-                  ধাতুবিশিষ্ট এবং অলসভাবে সময় কাটায়...
-                </p>
-                <Link href="/medicines/aconitum-napellus" className="read-more">
-                  আরও পড়ুন →
-                </Link>
-              </div>
-            </div>
+              return (
+                <div className="news-card" key={article.id} id={`news-card-${article.id}`}>
+                  {article.cover_image ? (
+                    <img src={article.cover_image} alt={article.title} />
+                  ) : (
+                    <div
+                      style={{
+                        height: "180px",
+                        background: "linear-gradient(135deg, #e8f5e9, #c8e6c9)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--primary)",
+                      }}
+                    >
+                      <i className="fas fa-leaf" style={{ fontSize: "40px" }} />
+                    </div>
+                  )}
+                  <div className="news-card-body">
+                    <h3>{article.title}</h3>
+                    <span className="author">{article.author_name || article.categories?.name || "Good Health Homeo"}</span>
+                    <p>
+                      {article.excerpt || (article.content ? article.content.substring(0, 100) + "..." : "")}
+                    </p>
+                    {isExternal ? (
+                      <a {...linkProps} className="read-more">
+                        আরও পড়ুন →
+                      </a>
+                    ) : (
+                      <Link href={article.href || href} className="read-more">
+                        আরও পড়ুন →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+          
+          {articles && articles.length > 0 && (
+            <div style={{ textAlign: "center", marginTop: "40px" }}>
+              <Link href="/articles" className="btn btn-primary" style={{ padding: "10px 24px", fontSize: "14px" }}>
+                সব আর্টিকেল দেখুন
+              </Link>
+            </div>
+          )}
         </div>
       </section>
 
       {/* Testimonials Section */}
-      <section className="section testimonial-section" id="testimonials">
-        <div className="container">
-          <div className="section-header">
-            <h2>হোমিওপ্যাথি সম্পর্কে জ্ঞানী লোকেরা কী বলেন</h2>
-          </div>
-          <div className="testimonial-card">
-            <div className="testimonial-avatar">
-              <img
-                src={testimonials[activeTestimonial].img}
-                alt={testimonials[activeTestimonial].name}
-              />
-              <h4>{testimonials[activeTestimonial].name}</h4>
-              <span>{testimonials[activeTestimonial].title}</span>
-            </div>
-            <div className="testimonial-text">
-              <p>{testimonials[activeTestimonial].text}</p>
-            </div>
-          </div>
-          <div className="testimonial-dots">
-            {testimonials.map((_, i) => (
-              <button
-                key={i}
-                className={`testimonial-dot ${i === activeTestimonial ? "active" : ""}`}
-                onClick={() => setActiveTestimonial(i)}
-                aria-label={`Testimonial ${i + 1}`}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
+      <Testimonials />
     </>
   );
 }

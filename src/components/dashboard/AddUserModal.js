@@ -97,10 +97,10 @@ export default function AddUserModal({ onClose }) {
             </div>
 
             <div className="modal-actions">
-              <button type="button" className="btn btn-secondary" onClick={onClose} disabled={loading}>
+              <button type="button" className="btn btn-secondary btn-compact" onClick={onClose} disabled={loading}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={loading}>
+              <button type="submit" className="btn btn-primary btn-compact" disabled={loading}>
                 {loading ? "Creating..." : "Create User"}
               </button>
             </div>
@@ -165,14 +165,6 @@ export default function AddUserModal({ onClose }) {
           justify-content: flex-end;
           gap: 10px;
           margin-top: 25px;
-        }
-        .btn-secondary {
-          background: #f1f1f1;
-          color: #333 !important;
-          border: 1px solid #ddd;
-        }
-        .btn-secondary:hover {
-          background: #e1e1e1;
         }
       `}</style>
     </div>

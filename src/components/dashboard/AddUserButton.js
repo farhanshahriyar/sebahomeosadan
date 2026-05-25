@@ -8,8 +8,7 @@ export default function AddUserButton() {
   return (
     <>
       <button 
-        className="btn btn-primary" 
-        style={{ padding: '10px 20px', fontSize: '14px' }}
+        className="btn btn-primary btn-compact" 
         onClick={() => setIsModalOpen(true)}
       >
         <i className="fas fa-user-plus"></i> Add User

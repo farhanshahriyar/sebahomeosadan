@@ -64,12 +64,26 @@ export default function DashboardShell({ userInfo, children }) {
             <i className="fas fa-pen-nib"></i> Author Panel
           </Link>
           {showAdminFeatures && (
-            <Link
-              href="/dashboard/admin"
-              className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin") ? "active" : ""}`}
-            >
-              <i className="fas fa-users-cog"></i> Manage Users
-            </Link>
+            <>
+              <Link
+                href="/dashboard/admin"
+                className={`dashboard-nav-item ${pathname === "/dashboard/admin" ? "active" : ""}`}
+              >
+                <i className="fas fa-users-cog"></i> Manage Users
+              </Link>
+              <Link
+                href="/dashboard/admin/categories"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/categories") ? "active" : ""}`}
+              >
+                <i className="fas fa-tags"></i> Manage Categories
+              </Link>
+              <Link
+                href="/dashboard/admin/review"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/review") ? "active" : ""}`}
+              >
+                <i className="fas fa-clipboard-check"></i> Editorial Review
+              </Link>
+            </>
           )}
 
           <div className="dashboard-nav-title">Content</div>

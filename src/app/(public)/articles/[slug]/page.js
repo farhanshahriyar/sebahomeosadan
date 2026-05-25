@@ -1,0 +1,168 @@
+import { createClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
+import Sidebar from "@/components/Sidebar";
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const supabase = await createClient();
+  const { data: article } = await supabase
+    .from("articles")
+    .select("title, excerpt, categories(name)")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .single();
+
+  if (!article) {
+    return { title: "পোস্ট পাওয়া যায়নি | Good Health Homeo Care" };
+  }
+
+  return {
+    title: `${article.title} | Good Health Homeo Care`,
+    description: article.excerpt || article.title,
+  };
+}
+
+function formatBanglaDate(dateString) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
+  const options = {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  };
+  return d.toLocaleDateString("bn-BD", options);
+}
+
+function formatBanglaTime(dateString) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
+  return d.toLocaleTimeString("bn-BD", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+export default async function ArticlePage({ params }) {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  // Fetch the article
+  const { data: article, error } = await supabase
+    .from("articles")
+    .select("*, categories(name)")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .single();
+
+  if (error || !article) {
+    notFound();
+  }
+
+  // Increment view count (fire and forget)
+  supabase
+    .from("articles")
+    .update({ views: (article.views || 0) + 1 })
+    .eq("id", article.id)
+    .then(() => {});
+
+  // Fetch previous and next articles for navigation
+  const { data: prevArticle } = await supabase
+    .from("articles")
+    .select("title, slug")
+    .eq("status", "published")
+    .lt("published_at", article.published_at)
+    .order("published_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  const { data: nextArticle } = await supabase
+    .from("articles")
+    .select("title, slug")
+    .eq("status", "published")
+    .gt("published_at", article.published_at)
+    .order("published_at", { ascending: true })
+    .limit(1)
+    .single();
+
+  return (
+    <div className="container">
+      <div className="blog-layout">
+        <div className="blog-content" id="article-content">
+          <span className="category">{article.categories?.name || "সাধারণ"}</span>
+          <h1 className="post-title">{article.title}</h1>
+          <div className="post-meta">
+            {article.author_name && <span>{article.author_name}</span>}
+            <span>{formatBanglaDate(article.published_at)}</span>
+            <span>{formatBanglaTime(article.published_at)}</span>
+          </div>
+
+          {article.cover_image && (
+            <img
+              src={article.cover_image}
+              alt={article.title}
+              style={{
+                width: "100%",
+                borderRadius: "12px",
+                marginBottom: "24px",
+                objectFit: "cover",
+                maxHeight: "400px",
+              }}
+            />
+          )}
+
+          {/* Render HTML content from the editor */}
+          <div
+            className="article-body"
+            dangerouslySetInnerHTML={{ __html: article.content }}
+          />
+
+          {/* Tags */}
+          {article.tags && article.tags.length > 0 && (
+            <div style={{ marginTop: "24px" }}>
+              <div className="tag-list">
+                {article.tags.map((tag, i) => (
+                  <span key={i} className="tag-item">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Post Navigation */}
+          <div className="post-navigation">
+            <div>
+              {prevArticle && (
+                <a href={`/articles/${prevArticle.slug}`}>
+                  <i className="fas fa-arrow-left" /> {prevArticle.title}
+                </a>
+              )}
+            </div>
+            <div className="post-share">
+              <i className="fa fa-share-alt" />
+              <a
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                  `https://goodhealthhomeocare.com/articles/${article.slug}`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Facebook
+              </a>
+            </div>
+            <div>
+              {nextArticle && (
+                <a href={`/articles/${nextArticle.slug}`}>
+                  {nextArticle.title} <i className="fas fa-arrow-right" />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+        <Sidebar />
+      </div>
+    </div>
+  );
+}

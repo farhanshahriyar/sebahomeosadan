@@ -1,0 +1,238 @@
+"use client";
+import { useState, useEffect, useCallback, useTransition } from "react";
+import { createClient } from "@/lib/supabase/client";
+import CategoryModal from "@/components/dashboard/CategoryModal";
+import { toggleCategoryAction, deleteCategoryAction } from "./actions";
+
+export default function CategoriesAdminPage() {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [isPending, startTransition] = useTransition();
+
+  const supabase = createClient();
+
+  // 1. Authorize User
+  useEffect(() => {
+    async function checkAuth() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.role !== "admin" && profile?.role !== "super_admin") {
+        window.location.href = "/dashboard";
+        return;
+      }
+      setAuthChecking(false);
+    }
+    checkAuth();
+  }, [supabase]);
+
+  // 2. Fetch Categories
+  const fetchCategories = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setCategories(data);
+    }
+    setLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!authChecking) {
+      fetchCategories();
+    }
+  }, [authChecking, fetchCategories]);
+
+  // Actions
+  const handleToggleActive = (id, currentActive) => {
+    startTransition(async () => {
+      const res = await toggleCategoryAction(id, currentActive);
+      if (res?.error) {
+        alert(res.error);
+      } else {
+        fetchCategories();
+      }
+    });
+  };
+
+  const handleDelete = async (id) => {
+    const res = await deleteCategoryAction(id);
+    if (res?.error) {
+      alert(res.error);
+    } else {
+      setDeleteConfirm(null);
+      fetchCategories();
+    }
+  };
+
+  const handleModalClose = (shouldRefresh) => {
+    setModalOpen(false);
+    setEditingCategory(null);
+    if (shouldRefresh) {
+      fetchCategories();
+    }
+  };
+
+  if (authChecking) {
+    return (
+      <div style={{ padding: "100px", textAlign: "center", color: "#999" }}>
+        <i className="fas fa-shield-alt fa-spin" style={{ fontSize: "32px", color: "var(--primary)" }} />
+        <p style={{ marginTop: "16px" }}>অনুমোদন যাচাই করা হচ্ছে...</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="dashboard-header">
+        <div>
+          <h1>ক্যাটাগরি ব্যবস্থাপনা (Manage Categories)</h1>
+          <div className="breadcrumb">
+            <a href="/dashboard">Dashboard</a> / <a href="/dashboard/admin">Admin</a> / Categories
+          </div>
+        </div>
+        <button
+          className="btn btn-primary btn-compact"
+          onClick={() => {
+            setEditingCategory(null);
+            setModalOpen(true);
+          }}
+        >
+          <i className="fas fa-plus"></i> নতুন ক্যাটাগরি
+        </button>
+      </div>
+
+      <div className="dashboard-panel">
+        <div className="panel-header">
+          <h2>ক্যাটাগরি তালিকা</h2>
+        </div>
+        <div className="panel-body" style={{ padding: 0 }}>
+          {loading ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#999" }}>
+              <i className="fas fa-spinner fa-spin" style={{ fontSize: "24px" }} />
+              <p style={{ marginTop: "12px" }}>লোড হচ্ছে...</p>
+            </div>
+          ) : categories.length === 0 ? (
+            <div style={{ padding: "60px 40px", textAlign: "center" }}>
+              <i className="fas fa-tags" style={{ fontSize: "48px", color: "#ddd", marginBottom: "16px", display: "block" }} />
+              <h3 style={{ color: "#999", fontWeight: 500, marginBottom: "8px" }}>কোনো ক্যাটাগরি তৈরি করা হয়নি</h3>
+              <p style={{ color: "#bbb", fontSize: "14px", marginBottom: "20px" }}>আর্টিকেল সাজানোর জন্য নতুন ক্যাটাগরি যুক্ত করুন।</p>
+              <button
+                className="btn btn-primary btn-compact"
+                onClick={() => {
+                  setEditingCategory(null);
+                  setModalOpen(true);
+                }}
+              >
+                ক্যাটাগরি যুক্ত করুন
+              </button>
+            </div>
+          ) : (
+            <table className="dashboard-table">
+              <thead>
+                <tr>
+                  <th>ক্রম (Sort)</th>
+                  <th>নাম (Name)</th>
+                  <th>স্লাগ (Slug)</th>
+                  <th>বর্ণনা (Description)</th>
+                  <th>অবস্থা (Status)</th>
+                  <th>অ্যাকশন (Actions)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((cat) => (
+                  <tr key={cat.id}>
+                    <td>
+                      <span style={{ background: "#e8f5e9", color: "var(--primary-dark)", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600" }}>
+                        {cat.sort_order}
+                      </span>
+                    </td>
+                    <td><strong>{cat.name}</strong></td>
+                    <td style={{ fontFamily: "monospace", fontSize: "13px" }}>{cat.slug}</td>
+                    <td style={{ color: "#666", maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {cat.description || "—"}
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleToggleActive(cat.id, cat.is_active)}
+                        disabled={isPending}
+                        className={`status-badge ${cat.is_active ? "status-published" : "status-draft"}`}
+                        style={{ border: "none", cursor: "pointer", padding: "6px 12px", fontWeight: "500" }}
+                        title="অবস্থা পরিবর্তন করতে ক্লিক করুন"
+                      >
+                        {cat.is_active ? "Active" : "Inactive"}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        className="action-btn action-edit"
+                        title="সম্পাদনা"
+                        style={{ marginRight: "8px" }}
+                        onClick={() => {
+                          setEditingCategory(cat);
+                          setModalOpen(true);
+                        }}
+                      >
+                        <i className="fas fa-edit"></i>
+                      </button>
+
+                      {deleteConfirm === cat.id ? (
+                        <div style={{ display: "inline-flex", gap: "6px" }}>
+                          <button
+                            className="action-btn"
+                            style={{ background: "#e74c3c", color: "#fff", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", border: "none", cursor: "pointer" }}
+                            onClick={() => handleDelete(cat.id)}
+                          >
+                            নিশ্চিত
+                          </button>
+                          <button
+                            className="action-btn"
+                            style={{ background: "#eee", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", border: "none", cursor: "pointer" }}
+                            onClick={() => setDeleteConfirm(null)}
+                          >
+                            বাতিল
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="action-btn action-delete"
+                          title="মুছুন"
+                          onClick={() => setDeleteConfirm(cat.id)}
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {modalOpen && (
+        <CategoryModal
+          category={editingCategory}
+          onClose={handleModalClose}
+        />
+      )}
+    </>
+  );
+}
