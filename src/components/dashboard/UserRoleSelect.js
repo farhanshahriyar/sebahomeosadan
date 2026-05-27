@@ -2,9 +2,11 @@
 import { useState, useTransition } from "react";
 import { updateUserRoleAction } from "@/app/dashboard/admin/actions";
 
-export default function UserRoleSelect({ userId, currentRole }) {
+export default function UserRoleSelect({ userId, currentRole, callerRole }) {
   const [isPending, startTransition] = useTransition();
   const [role, setRole] = useState(currentRole);
+
+  const isSuperAdmin = callerRole === "super_admin";
 
   const handleChange = async (e) => {
     const newRole = e.target.value;
@@ -24,7 +26,7 @@ export default function UserRoleSelect({ userId, currentRole }) {
       <select 
         value={role} 
         onChange={handleChange} 
-        disabled={isPending}
+        disabled={isPending || (!isSuperAdmin && (currentRole === "admin" || currentRole === "super_admin"))}
         style={{
           padding: '6px 10px',
           borderRadius: '6px',
@@ -34,8 +36,11 @@ export default function UserRoleSelect({ userId, currentRole }) {
         }}
       >
         <option value="author">Author</option>
-        <option value="admin">Admin</option>
-        <option value="super_admin">Super Admin</option>
+        {isSuperAdmin && <option value="admin">Admin</option>}
+        {isSuperAdmin && <option value="super_admin">Super Admin</option>}
+        {/* Show current role as read-only if admin can't change it */}
+        {!isSuperAdmin && currentRole === "admin" && <option value="admin" disabled>Admin</option>}
+        {!isSuperAdmin && currentRole === "super_admin" && <option value="super_admin" disabled>Super Admin</option>}
       </select>
       {isPending && <i className="fas fa-spinner fa-spin" style={{ color: '#0d7a3e' }}></i>}
     </div>

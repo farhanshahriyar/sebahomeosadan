@@ -55,6 +55,29 @@ export async function updateUserRoleAction(userId, newRole) {
     return { error: "Missing SUPABASE_SERVICE_ROLE_KEY" };
   }
 
+  // Verify the calling user's role using cookie-based auth
+  const { createClient: createAuthClient } = await import("@/lib/supabase/server");
+  const supabaseAuth = await createAuthClient();
+  const { data: { user: callingUser } } = await supabaseAuth.auth.getUser();
+
+  if (!callingUser) {
+    return { error: "আপনি লগইন করেননি।" };
+  }
+
+  const { data: callerProfile } = await supabaseAuth
+    .from("profiles")
+    .select("role")
+    .eq("id", callingUser.id)
+    .single();
+
+  const callerRole = callerProfile?.role;
+
+  // Only super_admin can assign admin or super_admin roles
+  if ((newRole === "admin" || newRole === "super_admin") && callerRole !== "super_admin") {
+    return { error: "শুধুমাত্র Super Admin এই রোল পরিবর্তন করতে পারেন। (Only Super Admin can assign Admin or Super Admin roles.)" };
+  }
+
+  // Only super_admin can change another admin's or super_admin's role
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     serviceRoleKey,
@@ -62,6 +85,17 @@ export async function updateUserRoleAction(userId, newRole) {
       auth: { autoRefreshToken: false, persistSession: false },
     }
   );
+
+  // Fetch the target user's current role
+  const { data: targetProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  if (targetProfile && (targetProfile.role === "admin" || targetProfile.role === "super_admin") && callerRole !== "super_admin") {
+    return { error: "শুধুমাত্র Super Admin অন্য Admin বা Super Admin এর রোল পরিবর্তন করতে পারেন।" };
+  }
 
   // 1. Update the role in auth.users metadata
   const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(

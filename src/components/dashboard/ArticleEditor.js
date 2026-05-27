@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import CoverImageUpload from "./CoverImageUpload";
 import { saveCategoryAction } from "@/app/dashboard/admin/categories/actions";
@@ -33,6 +33,23 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [suggestedTopicName, setSuggestedTopicName] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState(null);
+  const [selectionInfo, setSelectionInfo] = useState({
+    show: false,
+    x: 0,
+    y: 0,
+    start: 0,
+    end: 0,
+  });
+  const [showBlockDropdown, setShowBlockDropdown] = useState(false);
+  const [activeBlockStyle, setActiveBlockStyle] = useState("Paragraph");
+  const [history, setHistory] = useState([article?.content || ""]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [isMdInOpen, setIsMdInOpen] = useState(false);
+  const [isMdOutOpen, setIsMdOutOpen] = useState(false);
+  const [mdText, setMdText] = useState("");
+
+  const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   // Fetch categories from Supabase (including pending suggestions created by this author)
   useEffect(() => {
@@ -182,6 +199,450 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
       day: "numeric",
     };
     return d.toLocaleDateString("bn-BD", options);
+  };
+
+  // Close block dropdown on outside click
+  useEffect(() => {
+    if (!showBlockDropdown) return;
+    const handleClose = () => setShowBlockDropdown(false);
+    window.addEventListener("click", handleClose);
+    return () => window.removeEventListener("click", handleClose);
+  }, [showBlockDropdown]);
+
+  const handleDropdownToggle = (e) => {
+    e.stopPropagation();
+    setShowBlockDropdown((prev) => !prev);
+  };
+
+  const pushToHistory = useCallback((newVal) => {
+    setHistory((prev) => {
+      if (prev[historyIndex] === newVal) return prev;
+      const nextHistory = prev.slice(0, historyIndex + 1);
+      const updated = [...nextHistory, newVal];
+      setHistoryIndex(updated.length - 1);
+      return updated;
+    });
+  }, [historyIndex]);
+
+  const handleContentChange = (newVal) => {
+    setContent(newVal);
+    
+    // Debounce saving normal keystrokes to history
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      pushToHistory(newVal);
+    }, 800);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const nextIndex = historyIndex - 1;
+      setHistoryIndex(nextIndex);
+      setContent(history[nextIndex]);
+      setTimeout(() => {
+        const textarea = document.getElementById("article-content-textarea");
+        if (textarea) textarea.focus();
+      }, 0);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      setHistoryIndex(nextIndex);
+      setContent(history[nextIndex]);
+      setTimeout(() => {
+        const textarea = document.getElementById("article-content-textarea");
+        if (textarea) textarea.focus();
+      }, 0);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    // Space or Enter trigger immediate history checkpoint
+    if (e.key === " " || e.key === "Enter") {
+      pushToHistory(content);
+    }
+
+    // Ctrl+Z / Ctrl+Y keyboard shortcuts
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        handleRedo();
+      } else {
+        handleUndo();
+      }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      e.preventDefault();
+      handleRedo();
+    }
+  };
+
+  const applyFormatting = (tagOpen, tagClose) => {
+    const textarea = document.getElementById("article-content-textarea");
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    const selectedText = text.substring(start, end);
+    const beforeText = text.substring(0, start);
+    const afterText = text.substring(end);
+
+    let newText = "";
+    if (start === end) {
+      newText = beforeText + tagOpen + tagClose + afterText;
+      setContent(newText);
+      pushToHistory(newText);
+      
+      setTimeout(() => {
+        textarea.focus();
+        const cursorPosition = start + tagOpen.length;
+        textarea.setSelectionRange(cursorPosition, cursorPosition);
+      }, 0);
+    } else {
+      newText = beforeText + tagOpen + selectedText + tagClose + afterText;
+      setContent(newText);
+      pushToHistory(newText);
+
+      setTimeout(() => {
+        textarea.focus();
+        const newStart = start;
+        const newEnd = start + tagOpen.length + selectedText.length + tagClose.length;
+        textarea.setSelectionRange(newStart, newEnd);
+        
+        // Update bubble positioning coordinates dynamically
+        const rect = textarea.getBoundingClientRect();
+        setSelectionInfo((prev) => ({
+          ...prev,
+          start: newStart,
+          end: newEnd,
+        }));
+      }, 0);
+    }
+  };
+
+  const applyBlockStyle = (style) => {
+    const textarea = document.getElementById("article-content-textarea");
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    const selectedText = text.substring(start, end);
+    const beforeText = text.substring(0, start);
+    const afterText = text.substring(end);
+
+    let tagOpen = "";
+    let tagClose = "";
+
+    switch (style) {
+      case "p":
+        tagOpen = "<p>";
+        tagClose = "</p>\n";
+        break;
+      case "h1":
+        tagOpen = "<h1>";
+        tagClose = "</h1>\n";
+        break;
+      case "h2":
+        tagOpen = "<h2>";
+        tagClose = "</h2>\n";
+        break;
+      case "h3":
+        tagOpen = "<h3>";
+        tagClose = "</h3>\n";
+        break;
+      case "quote":
+        tagOpen = "<blockquote>";
+        tagClose = "</blockquote>\n";
+        break;
+      case "ul": {
+        const lines = selectedText ? selectedText.split("\n") : [""];
+        const listItems = lines.map(line => `  <li>${line}</li>`).join("\n");
+        const formatted = `<ul>\n${listItems}\n</ul>\n`;
+        const newText = beforeText + formatted + afterText;
+        setContent(newText);
+        pushToHistory(newText);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start, start + formatted.length);
+        }, 0);
+        return;
+      }
+      case "ol": {
+        const lines = selectedText ? selectedText.split("\n") : [""];
+        const listItems = lines.map(line => `  <li>${line}</li>`).join("\n");
+        const formatted = `<ol>\n${listItems}\n</ol>\n`;
+        const newText = beforeText + formatted + afterText;
+        setContent(newText);
+        pushToHistory(newText);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start, start + formatted.length);
+        }, 0);
+        return;
+      }
+      default:
+        return;
+    }
+
+    let newText = "";
+    if (start === end) {
+      const placeholder = style === "p" ? "প্যারাগ্রাফ টেক্সট" : (style.startsWith("h") ? "হেডিং" : "উদ্ধৃতি");
+      const formatted = tagOpen + placeholder + tagClose;
+      newText = beforeText + formatted + afterText;
+      setContent(newText);
+      pushToHistory(newText);
+      setTimeout(() => {
+        textarea.focus();
+        const targetStart = start + tagOpen.length;
+        const targetEnd = targetStart + placeholder.length;
+        textarea.setSelectionRange(targetStart, targetEnd);
+      }, 0);
+    } else {
+      const formatted = tagOpen + selectedText + tagClose;
+      newText = beforeText + formatted + afterText;
+      setContent(newText);
+      pushToHistory(newText);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start, start + formatted.length);
+      }, 0);
+    }
+  };
+
+  const handleInsertLink = () => {
+    const textarea = document.getElementById("article-content-textarea");
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+
+    const url = prompt("লিংক ইউআরএল (URL) লিখুন:");
+    if (url === null) return; // cancelled
+
+    const formattedUrl = url.trim() ? (url.startsWith("http://") || url.startsWith("https://") ? url.trim() : `https://${url.trim()}`) : "";
+    if (!formattedUrl) return;
+
+    applyFormatting(`<a href="${formattedUrl}" target="_blank">`, "</a>");
+  };
+
+  const handleClearFormatting = () => {
+    const textarea = document.getElementById("article-content-textarea");
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    if (start === end) return; // nothing selected
+
+    const selectedText = text.substring(start, end);
+    const beforeText = text.substring(0, start);
+    const afterText = text.substring(end);
+
+    const cleanedText = selectedText.replace(/<\/?[^>]+(>|$)/g, "");
+    
+    const newText = beforeText + cleanedText + afterText;
+    setContent(newText);
+    pushToHistory(newText);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start, start + cleanedText.length);
+    }, 0);
+  };
+
+  const getWordAndCharCount = () => {
+    const cleanText = content.replace(/<\/?[^>]+(>|$)/g, " ").replace(/\s+/g, " ").trim();
+    const words = cleanText ? cleanText.split(/\s+/).length : 0;
+    const chars = content.length;
+    return { words, chars };
+  };
+
+  const mdToHtml = (md) => {
+    let html = md;
+    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    html = html.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+    
+    const lines = html.split("\n");
+    let inUl = false;
+    let inOl = false;
+    const processedLines = [];
+    
+    for (let line of lines) {
+      const trimmed = line.trim();
+      const ulMatch = trimmed.match(/^[\*\-\+] (.*$)/i);
+      const olMatch = trimmed.match(/^\d+\. (.*$)/i);
+      
+      if (ulMatch) {
+        if (inOl) {
+          processedLines.push("</ol>");
+          inOl = false;
+        }
+        if (!inUl) {
+          processedLines.push("<ul>");
+          inUl = true;
+        }
+        processedLines.push(`  <li>${ulMatch[1]}</li>`);
+      } else if (olMatch) {
+        if (inUl) {
+          processedLines.push("</ul>");
+          inUl = false;
+        }
+        if (!inOl) {
+          processedLines.push("<ol>");
+          inOl = true;
+        }
+        processedLines.push(`  <li>${olMatch[1]}</li>`);
+      } else {
+        if (inUl) {
+          processedLines.push("</ul>");
+          inUl = false;
+        }
+        if (inOl) {
+          processedLines.push("</ol>");
+          inOl = false;
+        }
+        
+        if (trimmed !== "") {
+          if (!trimmed.startsWith("<h") && !trimmed.startsWith("<blockquote") && !trimmed.startsWith("<ul") && !trimmed.startsWith("<ol") && !trimmed.startsWith("<li")) {
+            processedLines.push(`<p>${trimmed}</p>`);
+          } else {
+            processedLines.push(trimmed);
+          }
+        } else {
+          processedLines.push("");
+        }
+      }
+    }
+    
+    if (inUl) processedLines.push("</ul>");
+    if (inOl) processedLines.push("</ol>");
+    
+    html = processedLines.join("\n");
+    html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/__(.*?)__/g, '<b>$1</b>');
+    html = html.replace(/\*(.*?)\*/g, '<i>$1</i>');
+    html = html.replace(/_(.*?)_/g, '<i>$1</i>');
+    html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    
+    return html;
+  };
+
+  const htmlToMd = (html) => {
+    let md = html;
+    md = md.replace(/<h1>(.*?)<\/h1>/gim, '# $1\n');
+    md = md.replace(/<h2>(.*?)<\/h2>/gim, '## $1\n');
+    md = md.replace(/<h3>(.*?)<\/h3>/gim, '### $1\n');
+    md = md.replace(/<h4>(.*?)<\/h4>/gim, '#### $1\n');
+    md = md.replace(/<blockquote>(.*?)<\/blockquote>/gim, '> $1\n');
+    md = md.replace(/<b>(.*?)<\/b>/g, '**$1**');
+    md = md.replace(/<strong>(.*?)<\/strong>/g, '**$1**');
+    md = md.replace(/<i>(.*?)<\/i>/g, '*$1*');
+    md = md.replace(/<em>(.*?)<\/em>/g, '*$1*');
+    md = md.replace(/<code>(.*?)<\/code>/g, '`$1`');
+    
+    md = md.replace(/<ul>\s*([\s\S]*?)\s*<\/ul>/g, (match, body) => {
+      return body.replace(/<li>(.*?)<\/li>/g, '- $1\n');
+    });
+    md = md.replace(/<ol>\s*([\s\S]*?)\s*<\/ol>/g, (match, body) => {
+      let idx = 1;
+      return body.replace(/<li>(.*?)<\/li>/g, () => `${idx++}. $1\n`);
+    });
+    md = md.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)<\/a>/g, '[$2]($1)');
+    md = md.replace(/<br\s*\/?>/g, '\n');
+    md = md.replace(/<p>(.*?)<\/p>/g, '$1\n\n');
+    md = md.replace(/<\/?[^>]+(>|$)/g, "");
+    md = md.replace(/\n{3,}/g, '\n\n');
+    return md.trim();
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      let finalContent = text;
+      if (file.name.endsWith(".md")) {
+        finalContent = mdToHtml(text);
+      }
+      setContent(finalContent);
+      pushToHistory(finalContent);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleExportHTML = () => {
+    if (!content.trim()) {
+      alert("কন্টেন্ট খালি থাকলে এক্সপোর্ট করা যাবে না।");
+      return;
+    }
+
+    const blob = new Blob([content], { type: "text/html;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const filename = slug ? `${slug}.html` : `article-${Date.now()}.html`;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleTextareaMouseUp = (e) => {
+    const textarea = e.target;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    if (start !== end) {
+      const rect = textarea.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      setSelectionInfo({
+        show: true,
+        x: Math.max(40, Math.min(x, rect.width - 80)),
+        y: Math.max(0, y),
+        start,
+        end,
+      });
+    } else {
+      setSelectionInfo((prev) => ({ ...prev, show: false }));
+    }
+  };
+
+  const handleTextareaKeyUp = (e) => {
+    const textarea = e.target;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    if (start !== end && (e.key.startsWith("Arrow") || e.key === "Shift")) {
+      const rect = textarea.getBoundingClientRect();
+      setSelectionInfo({
+        show: true,
+        x: rect.width / 2,
+        y: 30,
+        start,
+        end,
+      });
+    } else if (start === end) {
+      setSelectionInfo((prev) => ({ ...prev, show: false }));
+    }
   };
 
   const handleSave = useCallback(
@@ -549,59 +1010,379 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         {/* Content - Rich HTML Editor */}
         <div className="form-group">
           <label>কন্টেন্ট * (HTML সমর্থিত)</label>
-          <div className="editor-toolbar">
+          <div className="editor-toolbar-advanced">
+            {/* Block formatting dropdown */}
+            <div className="toolbar-dropdown-container">
+              <button
+                type="button"
+                className="toolbar-dropdown-trigger"
+                onClick={handleDropdownToggle}
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <span>{activeBlockStyle}</span>
+                <i className="fas fa-chevron-down" style={{ fontSize: "10px", marginLeft: "6px" }} />
+              </button>
+              
+              {showBlockDropdown && (
+                <div className="toolbar-dropdown-menu">
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("p");
+                      setActiveBlockStyle("Paragraph");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <span>Paragraph</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("h1");
+                      setActiveBlockStyle("Heading 1");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <span style={{ fontWeight: "bold", fontSize: "14px" }}>H1 Heading 1</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("h2");
+                      setActiveBlockStyle("Heading 2");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <span style={{ fontWeight: "bold", fontSize: "13px" }}>H2 Heading 2</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("h3");
+                      setActiveBlockStyle("Heading 3");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <span style={{ fontWeight: "bold", fontSize: "12px" }}>H3 Heading 3</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("quote");
+                      setActiveBlockStyle("Quote");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <i className="fas fa-quote-left" style={{ fontSize: "11px", marginRight: "6px" }} /> Quote
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("ul");
+                      setActiveBlockStyle("Bulleted List");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <i className="fas fa-list-ul" style={{ fontSize: "11px", marginRight: "6px" }} /> Bulleted List
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-dropdown-item"
+                    onClick={() => {
+                      applyBlockStyle("ol");
+                      setActiveBlockStyle("Numbered List");
+                      setShowBlockDropdown(false);
+                    }}
+                  >
+                    <i className="fas fa-list-ol" style={{ fontSize: "11px", marginRight: "6px" }} /> Numbered List
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="toolbar-divider" />
+
+            {/* Inline Styles */}
             <button
               type="button"
-              onClick={() =>
-                setContent(
-                  (c) => c + "<h4><b></b></h4>\n"
-                )
-              }
-              title="Heading"
+              className="toolbar-btn"
+              onClick={() => applyFormatting("<b>", "</b>")}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Bold (Ctrl+B)"
+              style={{ fontWeight: "bold" }}
             >
-              <b>H</b>
+              B
             </button>
             <button
               type="button"
-              onClick={() => setContent((c) => c + "<b></b>")}
-              title="Bold"
+              className="toolbar-btn"
+              onClick={() => applyFormatting("<i>", "</i>")}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Italic (Ctrl+I)"
+              style={{ fontStyle: "italic" }}
             >
-              <b>B</b>
+              I
             </button>
             <button
               type="button"
-              onClick={() => setContent((c) => c + "<i></i>")}
-              title="Italic"
+              className="toolbar-btn"
+              onClick={() => applyFormatting("<u>", "</u>")}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Underline"
+              style={{ textDecoration: "underline" }}
             >
-              <i>I</i>
+              U
             </button>
             <button
               type="button"
-              onClick={() => setContent((c) => c + "<br/>\n")}
-              title="Line Break"
+              className="toolbar-btn"
+              onClick={() => applyFormatting("<s>", "</s>")}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Strikethrough"
+              style={{ textDecoration: "line-through" }}
             >
-              ↵
+              S
             </button>
             <button
               type="button"
-              onClick={() =>
-                setContent((c) => c + '<p>\n\n</p>\n')
-              }
-              title="Paragraph"
+              className="toolbar-btn"
+              onClick={() => applyFormatting("<code>", "</code>")}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Code Block"
             >
-              ¶
+              &lt;&gt;
             </button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={handleClearFormatting}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Clear Selection Formatting"
+            >
+              T
+            </button>
+
+            <div className="toolbar-divider" />
+
+            {/* Alignments */}
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => applyFormatting('<div style="text-align: left;">', '</div>')}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Align Left"
+            >
+              <i className="fas fa-align-left" />
+            </button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => applyFormatting('<div style="text-align: center;">', '</div>')}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Align Center"
+            >
+              <i className="fas fa-align-center" />
+            </button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => applyFormatting('<div style="text-align: right;">', '</div>')}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Align Right"
+            >
+              <i className="fas fa-align-right" />
+            </button>
+
+            <div className="toolbar-divider" />
+
+            {/* Link */}
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={handleInsertLink}
+              onMouseDown={(e) => e.preventDefault()}
+              title="Insert Link"
+            >
+              <i className="fas fa-link" />
+            </button>
+
+            {/* Undo/Redo & Clear Formatting on Right */}
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={handleUndo}
+                disabled={historyIndex <= 0}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Undo (Ctrl+Z)"
+                style={{ opacity: historyIndex <= 0 ? 0.4 : 1, cursor: historyIndex <= 0 ? "not-allowed" : "pointer" }}
+              >
+                <i className="fas fa-undo" />
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={handleRedo}
+                disabled={historyIndex >= history.length - 1}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Redo (Ctrl+Y)"
+                style={{ opacity: historyIndex >= history.length - 1 ? 0.4 : 1, cursor: historyIndex >= history.length - 1 ? "not-allowed" : "pointer" }}
+              >
+                <i className="fas fa-redo" />
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => setIsPreviewOpen(true)}
+                title="প্রিভিউ (Preview)"
+                style={{ color: "var(--primary)", borderColor: "rgba(13, 122, 62, 0.3)" }}
+              >
+                <i className="fas fa-eye" />
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn-text"
+                onClick={handleClearFormatting}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Clear Formatting"
+              >
+                Clear formatting
+              </button>
+            </div>
           </div>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="<p>আর্টিকেলের মূল কন্টেন্ট এখানে লিখুন...</p>"
-            style={{
-              minHeight: "280px",
-              fontFamily: "monospace",
-              fontSize: "13px",
-              lineHeight: "1.6",
-            }}
+
+          <div className="textarea-container">
+            <textarea
+              id="article-content-textarea"
+              value={content}
+              onChange={(e) => handleContentChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onMouseUp={handleTextareaMouseUp}
+              onKeyUp={handleTextareaKeyUp}
+              onBlur={() => {
+                setTimeout(() => {
+                  setSelectionInfo((prev) => ({ ...prev, show: false }));
+                }, 200);
+              }}
+              placeholder="<p>আর্টিকেলের মূল কন্টেন্ট এখানে লিখুন...</p>"
+              style={{
+                minHeight: "280px",
+                fontFamily: "monospace",
+                fontSize: "13px",
+                lineHeight: "1.6",
+                borderTop: "none",
+                borderBottom: "none",
+                borderRadius: "0",
+              }}
+            />
+            {selectionInfo.show && (
+              <div
+                className="selection-popup"
+                style={{
+                  left: `${selectionInfo.x}px`,
+                  top: `${selectionInfo.y}px`,
+                }}
+              >
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("<h4><b>", "</b></h4>\n")}
+                  title="Heading"
+                >
+                  <b>H</b>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("<b>", "</b>")}
+                  title="Bold"
+                >
+                  <b>B</b>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("<i>", "</i>")}
+                  title="Italic"
+                >
+                  <i>I</i>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("<br/>\n", "")}
+                  title="Line Break"
+                >
+                  ↵
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyFormatting("<p>\n", "\n</p>\n")}
+                  title="Paragraph"
+                >
+                  ¶
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="editor-footer">
+            <div className="editor-counter">
+              {getWordAndCharCount().chars} characters | {getWordAndCharCount().words} words
+            </div>
+            
+            <div className="footer-actions">
+              <button
+                type="button"
+                className="footer-btn"
+                onClick={() => {
+                  setMdText("");
+                  setIsMdInOpen(true);
+                }}
+              >
+                MD In
+              </button>
+              <button
+                type="button"
+                className="footer-btn footer-btn-green"
+                onClick={() => {
+                  const md = htmlToMd(content);
+                  setMdText(md);
+                  setIsMdOutOpen(true);
+                }}
+              >
+                MD Out
+              </button>
+              <button
+                type="button"
+                className="footer-btn"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Import
+              </button>
+              <button
+                type="button"
+                className="footer-btn footer-btn-green"
+                onClick={handleExportHTML}
+              >
+                Export
+              </button>
+            </div>
+          </div>
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept=".txt,.md,.html"
+            onChange={handleImportFile}
           />
         </div>
 
@@ -706,6 +1487,89 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MD In Modal */}
+      {isMdInOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "600px" }}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: "1.2rem", margin: 0, color: "var(--primary-dark)" }}>Markdown ইনপোর্ট করুন</h2>
+              <button className="close-btn" onClick={() => setIsMdInOpen(false)} style={{ background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer" }}>&times;</button>
+            </div>
+            <div style={{ marginTop: "15px" }}>
+              <p style={{ fontSize: "13px", color: "#666", marginBottom: "10px" }}>
+                এখানে আপনার Markdown টেক্সট পেস্ট করুন। এটি স্বয়ংক্রিয়ভাবে HTML-এ রূপান্তরিত হয়ে এডিটর-এ যোগ হবে।
+              </p>
+              <textarea
+                value={mdText}
+                onChange={(e) => setMdText(e.target.value)}
+                placeholder="# শিরোনাম&#10;&#10;**বোল্ড টেক্সট** এবং *ইটালিক টেক্সট*..."
+                style={{ width: "100%", minHeight: "200px", fontFamily: "monospace", fontSize: "13px", padding: "12px", border: "1px solid #ddd", borderRadius: "6px" }}
+              />
+              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+                <button type="button" className="btn btn-secondary btn-compact" onClick={() => setIsMdInOpen(false)}>
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-compact"
+                  onClick={() => {
+                    const parsedHtml = mdToHtml(mdText);
+                    setContent(parsedHtml);
+                    pushToHistory(parsedHtml);
+                    setMdText("");
+                    setIsMdInOpen(false);
+                  }}
+                >
+                  ইনপোর্ট করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MD Out Modal */}
+      {isMdOutOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "600px" }}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: "1.2rem", margin: 0, color: "var(--primary-dark)" }}>Markdown এক্সপোর্ট করুন</h2>
+              <button className="close-btn" onClick={() => setIsMdOutOpen(false)} style={{ background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer" }}>&times;</button>
+            </div>
+            <div style={{ marginTop: "15px" }}>
+              <p style={{ fontSize: "13px", color: "#666", marginBottom: "10px" }}>
+                আপনার আর্টিকেলের HTML কন্টেন্ট থেকে জেনারেট করা Markdown নিচে দেওয়া হলো:
+              </p>
+              <textarea
+                readOnly
+                value={mdText}
+                style={{ width: "100%", minHeight: "200px", fontFamily: "monospace", fontSize: "13px", padding: "12px", border: "1px solid #ddd", borderRadius: "6px", background: "#f9f9f9" }}
+                onClick={(e) => e.target.select()}
+              />
+              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(mdText);
+                      alert("Markdown ক্লিপবোর্ডে কপি করা হয়েছে!");
+                    } catch (err) {
+                      alert("কপি করা সম্ভব হয়নি।");
+                    }
+                  }}
+                >
+                  কপি করুন
+                </button>
+                <button type="button" className="btn btn-primary btn-compact" onClick={() => setIsMdOutOpen(false)}>
+                  বন্ধ করুন
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

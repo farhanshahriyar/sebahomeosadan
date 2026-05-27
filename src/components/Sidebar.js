@@ -42,6 +42,28 @@ export default async function Sidebar() {
 
   return (
     <aside>
+      {/* Categories */}
+      <div className="sidebar-widget">
+        <h3>বিভাগসমূহ</h3>
+        <div className="categories-grid">
+          {categories.length > 0 ? (
+            categories.map((cat) => (
+              <Link 
+                key={cat.id} 
+                href={`/articles?category=${encodeURIComponent(cat.slug)}`}
+                className="category-grid-item"
+              >
+                {cat.name}
+              </Link>
+            ))
+          ) : (
+            <div style={{ color: "#999", fontSize: "14px", gridColumn: "span 3", textAlign: "center" }}>
+              এখনও কোনো বিভাগ যোগ করা হয়নি
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Recent Posts */}
       <div className="sidebar-widget">
         <h3>সাম্প্রতিক পোস্ট</h3>
@@ -58,26 +80,6 @@ export default async function Sidebar() {
           ) : (
             <li style={{ color: "#999", fontSize: "14px" }}>
               এখনও কোনো পোস্ট প্রকাশিত হয়নি
-            </li>
-          )}
-        </ul>
-      </div>
-
-      {/* Categories */}
-      <div className="sidebar-widget">
-        <h3>বিভাগসমূহ</h3>
-        <ul>
-          {categories.length > 0 ? (
-            categories.map((cat) => (
-              <li key={cat.id}>
-                <Link href={`/articles?category=${encodeURIComponent(cat.slug)}`}>
-                  {cat.name}
-                </Link>
-              </li>
-            ))
-          ) : (
-            <li style={{ color: "#999", fontSize: "14px" }}>
-              এখনও কোনো বিভাগ যোগ করা হয়নি
             </li>
           )}
         </ul>

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/login/actions";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function DashboardShell({ userInfo, children }) {
   const pathname = usePathname();
@@ -17,6 +17,8 @@ export default function DashboardShell({ userInfo, children }) {
 
   // If user is admin, they can toggle their view mode
   const [viewMode, setViewMode] = useState(isAdmin ? "admin" : "author");
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
+  const viewDropdownRef = useRef(null);
 
   // Sidebar collapse state
   const [collapsed, setCollapsed] = useState(false);
@@ -33,8 +35,27 @@ export default function DashboardShell({ userInfo, children }) {
     });
   };
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!viewDropdownOpen) return;
+    const handleClickOutside = (e) => {
+      if (viewDropdownRef.current && !viewDropdownRef.current.contains(e.target)) {
+        setViewDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [viewDropdownOpen]);
+
   // Determine if admin features should be visible
   const showAdminFeatures = isAdmin && viewMode === "admin";
+
+  const viewModes = [
+    { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
+    { key: "admin", label: "Admin", icon: "fas fa-shield-alt", description: "Full admin controls" },
+  ];
+
+  const currentMode = viewModes.find((m) => m.key === viewMode) || viewModes[0];
 
   return (
     <div className={`dashboard-layout${collapsed ? " sidebar-collapsed" : ""}`}>
@@ -52,23 +73,49 @@ export default function DashboardShell({ userInfo, children }) {
           <i className="fas fa-leaf"></i> <span>Good Health Homeo Care</span>
         </Link>
         
-        {/* View Switcher (Only for Admins) */}
+        {/* View Switcher Dropdown (Only for Admins) */}
         {isAdmin && (
-          <div className="view-switcher-container">
-            <div className="view-switcher">
-              <button 
-                className={`view-btn ${viewMode === 'author' ? 'active' : ''}`}
-                onClick={() => setViewMode('author')}
-              >
-                <span>Author</span>
-              </button>
-              <button 
-                className={`view-btn ${viewMode === 'admin' ? 'active' : ''}`}
-                onClick={() => setViewMode('admin')}
-              >
-                <span>Admin</span>
-              </button>
-            </div>
+          <div className="view-switcher-container" ref={viewDropdownRef}>
+            <button
+              className="view-switcher-trigger"
+              onClick={() => setViewDropdownOpen((prev) => !prev)}
+            >
+              <div className="view-switcher-trigger-left">
+                <div className="view-switcher-icon">
+                  <i className={currentMode.icon} />
+                </div>
+                <div className="view-switcher-info">
+                  <span className="view-switcher-label">{currentMode.label} View</span>
+                  <span className="view-switcher-desc">{currentMode.description}</span>
+                </div>
+              </div>
+              <i className={`fas fa-chevron-${viewDropdownOpen ? "up" : "down"} view-switcher-chevron`} />
+            </button>
+
+            {viewDropdownOpen && (
+              <div className="view-switcher-dropdown">
+                <div className="view-dropdown-header">Switch View</div>
+                {viewModes.map((mode) => (
+                  <button
+                    key={mode.key}
+                    className={`view-dropdown-item ${viewMode === mode.key ? "active" : ""}`}
+                    onClick={() => {
+                      setViewMode(mode.key);
+                      setViewDropdownOpen(false);
+                    }}
+                  >
+                    <i className={mode.icon} />
+                    <div className="view-dropdown-item-info">
+                      <span className="view-dropdown-item-label">{mode.label}</span>
+                      <span className="view-dropdown-item-desc">{mode.description}</span>
+                    </div>
+                    {viewMode === mode.key && (
+                      <i className="fas fa-check view-dropdown-check" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -79,12 +126,6 @@ export default function DashboardShell({ userInfo, children }) {
             className={`dashboard-nav-item ${pathname === "/dashboard" ? "active" : ""}`}
           >
             <i className="fas fa-home"></i> <span>Overview</span>
-          </Link>
-          <Link
-            href="/dashboard/author"
-            className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/author") ? "active" : ""}`}
-          >
-            <i className="fas fa-pen-nib"></i> <span>Author Panel</span>
           </Link>
           {showAdminFeatures && (
             <>
@@ -98,7 +139,13 @@ export default function DashboardShell({ userInfo, children }) {
                 href="/dashboard/admin/categories"
                 className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/categories") ? "active" : ""}`}
               >
-                <i className="fas fa-tags"></i> <span>Manage Categories</span>
+                <i className="fas fa-folder"></i> <span>Manage Categories</span>
+              </Link>
+              <Link
+                href="/dashboard/admin/topics"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/topics") ? "active" : ""}`}
+              >
+                <i className="fas fa-tags"></i> <span>Manage Topics</span>
               </Link>
               <Link
                 href="/dashboard/admin/review"
@@ -110,7 +157,10 @@ export default function DashboardShell({ userInfo, children }) {
           )}
 
           <div className="dashboard-nav-title"><span>Content</span></div>
-          <Link href="/dashboard" className="dashboard-nav-item">
+          <Link 
+            href="/dashboard/posts" 
+            className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/posts") || pathname?.startsWith("/dashboard/author") ? "active" : ""}`}
+          >
             <i className="fas fa-file-alt"></i> <span>Posts</span>
           </Link>
           <Link href="/dashboard" className="dashboard-nav-item">

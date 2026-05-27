@@ -75,7 +75,7 @@ export default async function ArticlesPage({ searchParams }) {
   // Determine Title / Header
   let pageHeader = "সব আর্টিকেল";
   if (categoryData) {
-    pageHeader = `বিভাগ: ${categoryData.name}`;
+    pageHeader = categoryData.name;
   } else if (tagName) {
     pageHeader = `ট্যাগ: ${tagName}`;
   } else if (searchQuery) {

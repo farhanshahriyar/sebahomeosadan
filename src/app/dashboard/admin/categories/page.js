@@ -13,6 +13,30 @@ export default function CategoriesAdminPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [isPending, startTransition] = useTransition();
 
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+
+  const filteredCategories = categories.filter((cat) => {
+    const matchesSearch =
+      cat.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (cat.slug && cat.slug.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (cat.description && cat.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && cat.is_active) ||
+      (statusFilter === "inactive" && !cat.is_active);
+
+    const matchesType =
+      typeFilter === "all" ||
+      (typeFilter === "subject" && !cat.parent_id) ||
+      (typeFilter === "topic" && cat.parent_id);
+
+    return matchesSearch && matchesStatus && matchesType;
+  });
+
   const supabase = createClient();
 
   // 1. Authorize User
@@ -144,97 +168,180 @@ export default function CategoriesAdminPage() {
               </button>
             </div>
           ) : (
-            <table className="dashboard-table">
-              <thead>
-                <tr>
-                  <th>ক্রম (Sort)</th>
-                  <th>নাম (Name)</th>
-                  <th>প্রকার (Type/Parent)</th>
-                  <th>স্লাগ (Slug)</th>
-                  <th>বর্ণনা (Description)</th>
-                  <th>অবস্থা (Status)</th>
-                  <th>অ্যাকশন (Actions)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((cat) => (
-                  <tr key={cat.id}>
-                    <td>
-                      <span style={{ background: "#e8f5e9", color: "var(--primary-dark)", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600" }}>
-                        {cat.sort_order}
-                      </span>
-                    </td>
-                    <td><strong>{cat.name}</strong></td>
-                    <td>
-                      {cat.parent_id ? (
-                        <span style={{ fontSize: "12px", background: "#fff3cd", color: "#856404", padding: "4px 8px", borderRadius: "4px", fontWeight: "500" }}>
-                          টপিক (অভিভাবক: {categories.find(p => p.id === cat.parent_id)?.name || "অজানা"})
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: "12px", background: "#cce5ff", color: "#004085", padding: "4px 8px", borderRadius: "4px", fontWeight: "500" }}>
-                          প্রধান বিষয় (Subject)
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ fontFamily: "monospace", fontSize: "13px" }}>{cat.slug}</td>
-                    <td style={{ color: "#666", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {cat.description || "—"}
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => handleToggleActive(cat.id, cat.is_active)}
-                        disabled={isPending}
-                        className={`status-badge ${cat.is_active ? "status-published" : "status-draft"}`}
-                        style={{ border: "none", cursor: "pointer", padding: "6px 12px", fontWeight: "500" }}
-                        title="অবস্থা পরিবর্তন করতে ক্লিক করুন"
-                      >
-                        {cat.is_active ? "Active" : "Inactive"}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        className="action-btn action-edit"
-                        title="সম্পাদনা"
-                        style={{ marginRight: "8px" }}
-                        onClick={() => {
-                          setEditingCategory(cat);
-                          setModalOpen(true);
-                        }}
-                      >
-                        <i className="fas fa-edit"></i>
-                      </button>
+            <>
+              {/* Search and Filters Bar */}
+              <div className="filter-bar" style={{ display: "flex", gap: "16px", padding: "16px 20px", background: "#f8f9fa", borderBottom: "1px solid #eee", alignItems: "center", flexWrap: "wrap" }}>
+                {/* Search */}
+                <div style={{ flex: 1, minWidth: "240px", position: "relative" }}>
+                  <i className="fas fa-search" style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#888", fontSize: "14px" }} />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="নাম, স্লাগ বা বিবরণ দিয়ে খুঁজুন..."
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 38px",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      outline: "none",
+                      transition: "all 0.2s ease"
+                    }}
+                  />
+                </div>
+                
+                {/* Filters */}
+                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                  {/* Status filter */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <label style={{ fontSize: "13px", fontWeight: "600", color: "#555", whiteSpace: "nowrap" }}>অবস্থা (Status):</label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      style={{
+                        padding: "10px 14px",
+                        border: "1px solid #ddd",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        outline: "none",
+                        backgroundColor: "#fff",
+                        cursor: "pointer",
+                        fontWeight: "500"
+                      }}
+                    >
+                      <option value="all">সব অবস্থা</option>
+                      <option value="active">Active (সক্রিয়)</option>
+                      <option value="inactive">Inactive (নিষ্ক্রিয়/পেন্ডিং)</option>
+                    </select>
+                  </div>
 
-                      {deleteConfirm === cat.id ? (
-                        <div style={{ display: "inline-flex", gap: "6px" }}>
+                  {/* Type filter */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <label style={{ fontSize: "13px", fontWeight: "600", color: "#555", whiteSpace: "nowrap" }}>প্রকার (Type):</label>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      style={{
+                        padding: "10px 14px",
+                        border: "1px solid #ddd",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        outline: "none",
+                        backgroundColor: "#fff",
+                        cursor: "pointer",
+                        fontWeight: "500"
+                      }}
+                    >
+                      <option value="all">সব টাইপ</option>
+                      <option value="subject">প্রধান বিষয় (Subject)</option>
+                      <option value="topic">টপিক (Topic)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Categories Table or Empty Match View */}
+              {filteredCategories.length === 0 ? (
+                <div style={{ padding: "60px 40px", textAlign: "center", color: "#999" }}>
+                  <i className="fas fa-search" style={{ fontSize: "40px", color: "#ddd", marginBottom: "16px", display: "block" }} />
+                  <h3 style={{ color: "#888", fontWeight: 500, marginBottom: "8px" }}>কোনো মিল পাওয়া যায়নি</h3>
+                  <p style={{ color: "#bbb", fontSize: "14px", margin: 0 }}>আপনার ফিল্টার বা খোঁজা শব্দের সাথে কোনো ক্যাটাগরি মিলছে না।</p>
+                </div>
+              ) : (
+                <table className="dashboard-table">
+                  <thead>
+                    <tr>
+                      <th>ক্রম (Sort)</th>
+                      <th>নাম (Name)</th>
+                      <th>প্রকার (Type/Parent)</th>
+                      <th>স্লাগ (Slug)</th>
+                      <th>বর্ণনা (Description)</th>
+                      <th>অবস্থা (Status)</th>
+                      <th>অ্যাকশন (Actions)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCategories.map((cat) => (
+                      <tr key={cat.id}>
+                        <td>
+                          <span style={{ background: "#e8f5e9", color: "var(--primary-dark)", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600" }}>
+                            {cat.sort_order}
+                          </span>
+                        </td>
+                        <td><strong>{cat.name}</strong></td>
+                        <td>
+                          {cat.parent_id ? (
+                            <span style={{ fontSize: "12px", background: "#fff3cd", color: "#856404", padding: "4px 8px", borderRadius: "4px", fontWeight: "500" }}>
+                              টপিক (অভিভাবক: {categories.find(p => p.id === cat.parent_id)?.name || "অজানা"})
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "12px", background: "#cce5ff", color: "#004085", padding: "4px 8px", borderRadius: "4px", fontWeight: "500" }}>
+                              প্রধান বিষয় (Subject)
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ fontFamily: "monospace", fontSize: "13px" }}>{cat.slug}</td>
+                        <td style={{ color: "#666", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {cat.description || "—"}
+                        </td>
+                        <td>
                           <button
-                            className="action-btn"
-                            style={{ background: "#e74c3c", color: "#fff", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", border: "none", cursor: "pointer" }}
-                            onClick={() => handleDelete(cat.id)}
+                            onClick={() => handleToggleActive(cat.id, cat.is_active)}
+                            disabled={isPending}
+                            className={`status-badge ${cat.is_active ? "status-published" : "status-draft"}`}
+                            style={{ border: "none", cursor: "pointer", padding: "6px 12px", fontWeight: "500" }}
+                            title="অবস্থা পরিবর্তন করতে ক্লিক করুন"
                           >
-                            নিশ্চিত
+                            {cat.is_active ? "Active" : "Inactive"}
                           </button>
+                        </td>
+                        <td>
                           <button
-                            className="action-btn"
-                            style={{ background: "#eee", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", border: "none", cursor: "pointer" }}
-                            onClick={() => setDeleteConfirm(null)}
+                            className="action-btn action-edit"
+                            title="সম্পাদনা"
+                            style={{ marginRight: "8px" }}
+                            onClick={() => {
+                              setEditingCategory(cat);
+                              setModalOpen(true);
+                            }}
                           >
-                            বাতিল
+                            <i className="fas fa-edit"></i>
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          className="action-btn action-delete"
-                          title="মুছুন"
-                          onClick={() => setDeleteConfirm(cat.id)}
-                        >
-                          <i className="fas fa-trash"></i>
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+                          {deleteConfirm === cat.id ? (
+                            <div style={{ display: "inline-flex", gap: "6px" }}>
+                              <button
+                                className="action-btn"
+                                style={{ background: "#e74c3c", color: "#fff", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", border: "none", cursor: "pointer" }}
+                                onClick={() => handleDelete(cat.id)}
+                              >
+                                নিশ্চিত
+                              </button>
+                              <button
+                                className="action-btn"
+                                style={{ background: "#eee", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", border: "none", cursor: "pointer" }}
+                                onClick={() => setDeleteConfirm(null)}
+                              >
+                                বাতিল
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="action-btn action-delete"
+                              title="মুছুন"
+                              onClick={() => setDeleteConfirm(cat.id)}
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
           )}
         </div>
       </div>

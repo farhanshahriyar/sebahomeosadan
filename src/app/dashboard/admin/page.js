@@ -4,6 +4,15 @@ import UserRoleSelect from "@/components/dashboard/UserRoleSelect";
 
 export default async function AdminDashboard() {
   const supabase = await createClient();
+
+  // Fetch current user's role
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  const { data: currentProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", currentUser?.id)
+    .single();
+  const callerRole = currentProfile?.role || "author";
   
   // Fetch all profiles
   const { data: users, error } = await supabase
@@ -101,7 +110,7 @@ export default async function AdminDashboard() {
                   <td><strong>{user.full_name || "Unknown"}</strong></td>
                   <td style={{ fontSize: '12px', color: '#666' }}>{user.id.substring(0, 8)}...</td>
                   <td>
-                    <UserRoleSelect userId={user.id} currentRole={user.role} />
+                    <UserRoleSelect userId={user.id} currentRole={user.role} callerRole={callerRole} />
                   </td>
                   <td>{new Date(user.created_at).toLocaleDateString()}</td>
                   <td>
