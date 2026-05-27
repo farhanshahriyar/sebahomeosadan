@@ -475,6 +475,12 @@ export default function DashboardShell({ userInfo, children }) {
                 <i className="fas fa-folder"></i> <span>Manage Categories</span>
               </Link>
               <Link
+                href="/dashboard/admin/messages"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/messages") ? "active" : ""}`}
+              >
+                <i className="fas fa-envelope"></i> <span>Manage Messages</span>
+              </Link>
+              <Link
                 href="/dashboard/admin/topics"
                 className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/topics") ? "active" : ""}`}
               >
