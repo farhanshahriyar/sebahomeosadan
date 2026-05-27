@@ -33,13 +33,6 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [suggestedTopicName, setSuggestedTopicName] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState(null);
-  const [selectionInfo, setSelectionInfo] = useState({
-    show: false,
-    x: 0,
-    y: 0,
-    start: 0,
-    end: 0,
-  });
   const [showBlockDropdown, setShowBlockDropdown] = useState(false);
   const [activeBlockStyle, setActiveBlockStyle] = useState("Paragraph");
   const [history, setHistory] = useState([article?.content || ""]);
@@ -47,9 +40,14 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [isMdInOpen, setIsMdInOpen] = useState(false);
   const [isMdOutOpen, setIsMdOutOpen] = useState(false);
   const [mdText, setMdText] = useState("");
+  const [isSourceMode, setIsSourceMode] = useState(false);
+  const [sourceHtml, setSourceHtml] = useState("");
 
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const historyIndexRef = useRef(0);
+  const editorRef = useRef(null);
+  const isInternalUpdate = useRef(false);
 
   // Fetch categories from Supabase (including pending suggestions created by this author)
   useEffect(() => {
@@ -216,58 +214,63 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
 
   const pushToHistory = useCallback((newVal) => {
     setHistory((prev) => {
-      if (prev[historyIndex] === newVal) return prev;
-      const nextHistory = prev.slice(0, historyIndex + 1);
+      const currentIndex = historyIndexRef.current;
+      if (prev[currentIndex] === newVal) return prev;
+      const nextHistory = prev.slice(0, currentIndex + 1);
       const updated = [...nextHistory, newVal];
-      setHistoryIndex(updated.length - 1);
+      const newIndex = updated.length - 1;
+      historyIndexRef.current = newIndex;
+      setHistoryIndex(newIndex);
       return updated;
     });
-  }, [historyIndex]);
+  }, []);
 
-  const handleContentChange = (newVal) => {
-    setContent(newVal);
+  // Sync content into the contentEditable div when content state changes externally
+  useEffect(() => {
+    if (editorRef.current && isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
+    }
+    if (editorRef.current && !isSourceMode) {
+      // Only update innerHTML if it actually differs to avoid cursor jumping
+      if (editorRef.current.innerHTML !== content) {
+        editorRef.current.innerHTML = content;
+      }
+    }
+  }, [content, isSourceMode]);
+
+  const syncContentFromEditor = useCallback(() => {
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
+    // Clean up browser artifacts
+    const cleaned = html === "<br>" || html === "<div><br></div>" ? "" : html;
+    if (cleaned !== content) {
+      isInternalUpdate.current = true;
+      setContent(cleaned);
+    }
+    return cleaned;
+  }, [content]);
+
+  const handleEditorInput = useCallback(() => {
+    const html = syncContentFromEditor();
     
-    // Debounce saving normal keystrokes to history
+    // Debounce saving to history
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    
     typingTimeoutRef.current = setTimeout(() => {
-      pushToHistory(newVal);
+      if (html !== undefined) pushToHistory(html);
     }, 800);
-  };
+  }, [syncContentFromEditor, pushToHistory]);
 
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      const nextIndex = historyIndex - 1;
-      setHistoryIndex(nextIndex);
-      setContent(history[nextIndex]);
-      setTimeout(() => {
-        const textarea = document.getElementById("article-content-textarea");
-        if (textarea) textarea.focus();
-      }, 0);
-    }
-  };
-
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const nextIndex = historyIndex + 1;
-      setHistoryIndex(nextIndex);
-      setContent(history[nextIndex]);
-      setTimeout(() => {
-        const textarea = document.getElementById("article-content-textarea");
-        if (textarea) textarea.focus();
-      }, 0);
-    }
-  };
-
-  const handleKeyDown = (e) => {
+  const handleEditorKeyDown = (e) => {
     // Space or Enter trigger immediate history checkpoint
     if (e.key === " " || e.key === "Enter") {
-      pushToHistory(content);
+      const html = syncContentFromEditor();
+      if (html !== undefined) pushToHistory(html);
     }
 
-    // Ctrl+Z / Ctrl+Y keyboard shortcuts
+    // Override Ctrl+Z/Y to use our history
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) {
@@ -282,183 +285,123 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     }
   };
 
-  const applyFormatting = (tagOpen, tagClose) => {
-    const textarea = document.getElementById("article-content-textarea");
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-
-    const selectedText = text.substring(start, end);
-    const beforeText = text.substring(0, start);
-    const afterText = text.substring(end);
-
-    let newText = "";
-    if (start === end) {
-      newText = beforeText + tagOpen + tagClose + afterText;
-      setContent(newText);
-      pushToHistory(newText);
-      
+  const handleUndo = () => {
+    if (historyIndexRef.current > 0) {
+      const nextIndex = historyIndexRef.current - 1;
+      historyIndexRef.current = nextIndex;
+      setHistoryIndex(nextIndex);
+      const restoredContent = history[nextIndex];
+      setContent(restoredContent);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = restoredContent;
+      }
       setTimeout(() => {
-        textarea.focus();
-        const cursorPosition = start + tagOpen.length;
-        textarea.setSelectionRange(cursorPosition, cursorPosition);
-      }, 0);
-    } else {
-      newText = beforeText + tagOpen + selectedText + tagClose + afterText;
-      setContent(newText);
-      pushToHistory(newText);
-
-      setTimeout(() => {
-        textarea.focus();
-        const newStart = start;
-        const newEnd = start + tagOpen.length + selectedText.length + tagClose.length;
-        textarea.setSelectionRange(newStart, newEnd);
-        
-        // Update bubble positioning coordinates dynamically
-        const rect = textarea.getBoundingClientRect();
-        setSelectionInfo((prev) => ({
-          ...prev,
-          start: newStart,
-          end: newEnd,
-        }));
+        if (editorRef.current) editorRef.current.focus();
       }, 0);
     }
+  };
+
+  const handleRedo = () => {
+    if (historyIndexRef.current < history.length - 1) {
+      const nextIndex = historyIndexRef.current + 1;
+      historyIndexRef.current = nextIndex;
+      setHistoryIndex(nextIndex);
+      const restoredContent = history[nextIndex];
+      setContent(restoredContent);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = restoredContent;
+      }
+      setTimeout(() => {
+        if (editorRef.current) editorRef.current.focus();
+      }, 0);
+    }
+  };
+
+  // Detect current block format for the dropdown label
+  const detectActiveBlock = useCallback(() => {
+    try {
+      const block = document.queryCommandValue("formatBlock");
+      const map = {
+        p: "Paragraph", h1: "Heading 1", h2: "Heading 2", h3: "Heading 3",
+        blockquote: "Quote",
+      };
+      setActiveBlockStyle(map[block?.toLowerCase()] || "Paragraph");
+    } catch {
+      setActiveBlockStyle("Paragraph");
+    }
+  }, []);
+
+  // WYSIWYG formatting via execCommand
+  const execFormat = (command, value) => {
+    if (editorRef.current) editorRef.current.focus();
+    document.execCommand(command, false, value || null);
+    syncContentFromEditor();
+    const html = editorRef.current?.innerHTML || "";
+    pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+    detectActiveBlock();
   };
 
   const applyBlockStyle = (style) => {
-    const textarea = document.getElementById("article-content-textarea");
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-
-    const selectedText = text.substring(start, end);
-    const beforeText = text.substring(0, start);
-    const afterText = text.substring(end);
-
-    let tagOpen = "";
-    let tagClose = "";
-
+    if (editorRef.current) editorRef.current.focus();
     switch (style) {
       case "p":
-        tagOpen = "<p>";
-        tagClose = "</p>\n";
+        document.execCommand("formatBlock", false, "p");
         break;
       case "h1":
-        tagOpen = "<h1>";
-        tagClose = "</h1>\n";
+        document.execCommand("formatBlock", false, "h1");
         break;
       case "h2":
-        tagOpen = "<h2>";
-        tagClose = "</h2>\n";
+        document.execCommand("formatBlock", false, "h2");
         break;
       case "h3":
-        tagOpen = "<h3>";
-        tagClose = "</h3>\n";
+        document.execCommand("formatBlock", false, "h3");
         break;
       case "quote":
-        tagOpen = "<blockquote>";
-        tagClose = "</blockquote>\n";
+        document.execCommand("formatBlock", false, "blockquote");
         break;
-      case "ul": {
-        const lines = selectedText ? selectedText.split("\n") : [""];
-        const listItems = lines.map(line => `  <li>${line}</li>`).join("\n");
-        const formatted = `<ul>\n${listItems}\n</ul>\n`;
-        const newText = beforeText + formatted + afterText;
-        setContent(newText);
-        pushToHistory(newText);
-        setTimeout(() => {
-          textarea.focus();
-          textarea.setSelectionRange(start, start + formatted.length);
-        }, 0);
-        return;
-      }
-      case "ol": {
-        const lines = selectedText ? selectedText.split("\n") : [""];
-        const listItems = lines.map(line => `  <li>${line}</li>`).join("\n");
-        const formatted = `<ol>\n${listItems}\n</ol>\n`;
-        const newText = beforeText + formatted + afterText;
-        setContent(newText);
-        pushToHistory(newText);
-        setTimeout(() => {
-          textarea.focus();
-          textarea.setSelectionRange(start, start + formatted.length);
-        }, 0);
-        return;
-      }
+      case "ul":
+        document.execCommand("insertUnorderedList", false, null);
+        break;
+      case "ol":
+        document.execCommand("insertOrderedList", false, null);
+        break;
       default:
         return;
     }
-
-    let newText = "";
-    if (start === end) {
-      const placeholder = style === "p" ? "প্যারাগ্রাফ টেক্সট" : (style.startsWith("h") ? "হেডিং" : "উদ্ধৃতি");
-      const formatted = tagOpen + placeholder + tagClose;
-      newText = beforeText + formatted + afterText;
-      setContent(newText);
-      pushToHistory(newText);
-      setTimeout(() => {
-        textarea.focus();
-        const targetStart = start + tagOpen.length;
-        const targetEnd = targetStart + placeholder.length;
-        textarea.setSelectionRange(targetStart, targetEnd);
-      }, 0);
-    } else {
-      const formatted = tagOpen + selectedText + tagClose;
-      newText = beforeText + formatted + afterText;
-      setContent(newText);
-      pushToHistory(newText);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start, start + formatted.length);
-      }, 0);
-    }
+    syncContentFromEditor();
+    const html = editorRef.current?.innerHTML || "";
+    pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+    detectActiveBlock();
   };
 
   const handleInsertLink = () => {
-    const textarea = document.getElementById("article-content-textarea");
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-
+    if (editorRef.current) editorRef.current.focus();
     const url = prompt("লিংক ইউআরএল (URL) লিখুন:");
-    if (url === null) return; // cancelled
-
+    if (url === null) return;
     const formattedUrl = url.trim() ? (url.startsWith("http://") || url.startsWith("https://") ? url.trim() : `https://${url.trim()}`) : "";
     if (!formattedUrl) return;
-
-    applyFormatting(`<a href="${formattedUrl}" target="_blank">`, "</a>");
+    document.execCommand("createLink", false, formattedUrl);
+    // Set target="_blank" on the created link
+    const sel = window.getSelection();
+    if (sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      let linkEl = range.startContainer;
+      while (linkEl && linkEl.tagName !== "A") linkEl = linkEl.parentNode;
+      if (linkEl?.tagName === "A") linkEl.setAttribute("target", "_blank");
+    }
+    syncContentFromEditor();
+    const html = editorRef.current?.innerHTML || "";
+    pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
   };
 
   const handleClearFormatting = () => {
-    const textarea = document.getElementById("article-content-textarea");
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-
-    if (start === end) return; // nothing selected
-
-    const selectedText = text.substring(start, end);
-    const beforeText = text.substring(0, start);
-    const afterText = text.substring(end);
-
-    const cleanedText = selectedText.replace(/<\/?[^>]+(>|$)/g, "");
-    
-    const newText = beforeText + cleanedText + afterText;
-    setContent(newText);
-    pushToHistory(newText);
-
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start, start + cleanedText.length);
-    }, 0);
+    if (editorRef.current) editorRef.current.focus();
+    document.execCommand("removeFormat", false, null);
+    // Also reset block to paragraph
+    document.execCommand("formatBlock", false, "p");
+    syncContentFromEditor();
+    const html = editorRef.current?.innerHTML || "";
+    pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
   };
 
   const getWordAndCharCount = () => {
@@ -531,10 +474,10 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     if (inOl) processedLines.push("</ol>");
     
     html = processedLines.join("\n");
-    html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-    html = html.replace(/__(.*?)__/g, '<b>$1</b>');
-    html = html.replace(/\*(.*?)\*/g, '<i>$1</i>');
-    html = html.replace(/_(.*?)_/g, '<i>$1</i>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/__(.+?)__/g, '<b>$1</b>');
+    html = html.replace(/\*(.+?)\*/g, '<i>$1</i>');
+    html = html.replace(/\b_(.+?)_\b/g, '<i>$1</i>');
     html = html.replace(/`(.*?)`/g, '<code>$1</code>');
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
     
@@ -559,7 +502,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     });
     md = md.replace(/<ol>\s*([\s\S]*?)\s*<\/ol>/g, (match, body) => {
       let idx = 1;
-      return body.replace(/<li>(.*?)<\/li>/g, () => `${idx++}. $1\n`);
+      return body.replace(/<li>(.*?)<\/li>/g, (m, itemContent) => `${idx++}. ${itemContent}\n`);
     });
     md = md.replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)<\/a>/g, '[$2]($1)');
     md = md.replace(/<br\s*\/?>/g, '\n');
@@ -604,46 +547,21 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     document.body.removeChild(link);
   };
 
-  const handleTextareaMouseUp = (e) => {
-    const textarea = e.target;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
+  // Detect block style when selection changes in the editor
+  const handleEditorSelectionChange = useCallback(() => {
+    detectActiveBlock();
+  }, [detectActiveBlock]);
 
-    if (start !== end) {
-      const rect = textarea.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      setSelectionInfo({
-        show: true,
-        x: Math.max(40, Math.min(x, rect.width - 80)),
-        y: Math.max(0, y),
-        start,
-        end,
-      });
-    } else {
-      setSelectionInfo((prev) => ({ ...prev, show: false }));
-    }
-  };
-
-  const handleTextareaKeyUp = (e) => {
-    const textarea = e.target;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-
-    if (start !== end && (e.key.startsWith("Arrow") || e.key === "Shift")) {
-      const rect = textarea.getBoundingClientRect();
-      setSelectionInfo({
-        show: true,
-        x: rect.width / 2,
-        y: 30,
-        start,
-        end,
-      });
-    } else if (start === end) {
-      setSelectionInfo((prev) => ({ ...prev, show: false }));
-    }
-  };
+  // Listen for selectionchange events
+  useEffect(() => {
+    const handler = () => {
+      if (editorRef.current && editorRef.current.contains(document.activeElement === editorRef.current ? document.getSelection()?.anchorNode : null)) {
+        handleEditorSelectionChange();
+      }
+    };
+    document.addEventListener("selectionchange", handler);
+    return () => document.removeEventListener("selectionchange", handler);
+  }, [handleEditorSelectionChange]);
 
   const handleSave = useCallback(
     async (status) => {
@@ -774,7 +692,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             padding: "12px 16px",
             borderRadius: "10px",
             fontSize: "14px",
-            marginBottom: "20px",
+            margin: "0 28px 20px 28px",
           }}
         >
           <i className="fas fa-exclamation-circle" /> {error}
@@ -1007,9 +925,9 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
           />
         </div>
 
-        {/* Content - Rich HTML Editor */}
+        {/* Content - Rich WYSIWYG Editor */}
         <div className="form-group">
-          <label>কন্টেন্ট * (HTML সমর্থিত)</label>
+          <label>কন্টেন্ট *</label>
           <div className="editor-toolbar-advanced">
             {/* Block formatting dropdown */}
             <div className="toolbar-dropdown-container">
@@ -1112,7 +1030,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting("<b>", "</b>")}
+              onClick={() => execFormat("bold")}
               onMouseDown={(e) => e.preventDefault()}
               title="Bold (Ctrl+B)"
               style={{ fontWeight: "bold" }}
@@ -1122,7 +1040,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting("<i>", "</i>")}
+              onClick={() => execFormat("italic")}
               onMouseDown={(e) => e.preventDefault()}
               title="Italic (Ctrl+I)"
               style={{ fontStyle: "italic" }}
@@ -1132,7 +1050,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting("<u>", "</u>")}
+              onClick={() => execFormat("underline")}
               onMouseDown={(e) => e.preventDefault()}
               title="Underline"
               style={{ textDecoration: "underline" }}
@@ -1142,7 +1060,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting("<s>", "</s>")}
+              onClick={() => execFormat("strikeThrough")}
               onMouseDown={(e) => e.preventDefault()}
               title="Strikethrough"
               style={{ textDecoration: "line-through" }}
@@ -1152,9 +1070,20 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting("<code>", "</code>")}
+              onClick={() => {
+                // Wrap selection in <code>
+                const sel = window.getSelection();
+                if (sel.rangeCount && !sel.isCollapsed) {
+                  const range = sel.getRangeAt(0);
+                  const code = document.createElement("code");
+                  range.surroundContents(code);
+                  syncContentFromEditor();
+                  const html = editorRef.current?.innerHTML || "";
+                  pushToHistory(html);
+                }
+              }}
               onMouseDown={(e) => e.preventDefault()}
-              title="Code Block"
+              title="Code"
             >
               &lt;&gt;
             </button>
@@ -1174,7 +1103,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting('<div style="text-align: left;">', '</div>')}
+              onClick={() => execFormat("justifyLeft")}
               onMouseDown={(e) => e.preventDefault()}
               title="Align Left"
             >
@@ -1183,7 +1112,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting('<div style="text-align: center;">', '</div>')}
+              onClick={() => execFormat("justifyCenter")}
               onMouseDown={(e) => e.preventDefault()}
               title="Align Center"
             >
@@ -1192,7 +1121,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <button
               type="button"
               className="toolbar-btn"
-              onClick={() => applyFormatting('<div style="text-align: right;">', '</div>')}
+              onClick={() => execFormat("justifyRight")}
               onMouseDown={(e) => e.preventDefault()}
               title="Align Right"
             >
@@ -1212,7 +1141,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
               <i className="fas fa-link" />
             </button>
 
-            {/* Undo/Redo & Clear Formatting on Right */}
+            {/* Undo/Redo & Source/Clear on Right */}
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
               <button
                 type="button"
@@ -1247,6 +1176,28 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
               </button>
               <button
                 type="button"
+                className={`toolbar-btn${isSourceMode ? " toolbar-btn-active" : ""}`}
+                onClick={() => {
+                  if (isSourceMode) {
+                    // Switching from source to WYSIWYG
+                    setContent(sourceHtml);
+                    pushToHistory(sourceHtml);
+                    setIsSourceMode(false);
+                  } else {
+                    // Switching to source view
+                    syncContentFromEditor();
+                    setSourceHtml(content);
+                    setIsSourceMode(true);
+                  }
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+                title={isSourceMode ? "ভিজ্যুয়াল মোডে ফিরুন" : "HTML সোর্স দেখুন"}
+                style={isSourceMode ? { background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" } : {}}
+              >
+                <i className="fas fa-code" />
+              </button>
+              <button
+                type="button"
                 className="toolbar-btn-text"
                 onClick={handleClearFormatting}
                 onMouseDown={(e) => e.preventDefault()}
@@ -1257,79 +1208,56 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             </div>
           </div>
 
-          <div className="textarea-container">
-            <textarea
-              id="article-content-textarea"
-              value={content}
-              onChange={(e) => handleContentChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onMouseUp={handleTextareaMouseUp}
-              onKeyUp={handleTextareaKeyUp}
-              onBlur={() => {
-                setTimeout(() => {
-                  setSelectionInfo((prev) => ({ ...prev, show: false }));
-                }, 200);
-              }}
-              placeholder="<p>আর্টিকেলের মূল কন্টেন্ট এখানে লিখুন...</p>"
-              style={{
-                minHeight: "280px",
-                fontFamily: "monospace",
-                fontSize: "13px",
-                lineHeight: "1.6",
-                borderTop: "none",
-                borderBottom: "none",
-                borderRadius: "0",
-              }}
-            />
-            {selectionInfo.show && (
-              <div
-                className="selection-popup"
+          <div className="wysiwyg-editor-container">
+            {isSourceMode ? (
+              <textarea
+                className="source-code-editor"
+                value={sourceHtml}
+                onChange={(e) => setSourceHtml(e.target.value)}
+                spellCheck={false}
                 style={{
-                  left: `${selectionInfo.x}px`,
-                  top: `${selectionInfo.y}px`,
+                  width: "100%",
+                  minHeight: "320px",
+                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+                  fontSize: "13px",
+                  lineHeight: "1.7",
+                  padding: "20px",
+                  border: "1px solid #e4e6eb",
+                  borderTop: "none",
+                  borderBottom: "none",
+                  borderRadius: "0",
+                  resize: "vertical",
+                  background: "#1e1e2e",
+                  color: "#cdd6f4",
+                  outline: "none",
+                  tabSize: 2,
                 }}
-              >
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("<h4><b>", "</b></h4>\n")}
-                  title="Heading"
-                >
-                  <b>H</b>
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("<b>", "</b>")}
-                  title="Bold"
-                >
-                  <b>B</b>
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("<i>", "</i>")}
-                  title="Italic"
-                >
-                  <i>I</i>
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("<br/>\n", "")}
-                  title="Line Break"
-                >
-                  ↵
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyFormatting("<p>\n", "\n</p>\n")}
-                  title="Paragraph"
-                >
-                  ¶
-                </button>
-              </div>
+              />
+            ) : (
+              <div
+                ref={editorRef}
+                className="wysiwyg-editable"
+                contentEditable
+                suppressContentEditableWarning
+                onInput={handleEditorInput}
+                onKeyDown={handleEditorKeyDown}
+                onBlur={() => syncContentFromEditor()}
+                data-placeholder="আর্টিকেলের মূল কন্টেন্ট এখানে লিখুন..."
+                style={{
+                  minHeight: "320px",
+                  padding: "20px",
+                  border: "1px solid #e4e6eb",
+                  borderTop: "none",
+                  borderBottom: "none",
+                  borderRadius: "0",
+                  outline: "none",
+                  fontSize: "15px",
+                  lineHeight: "1.8",
+                  color: "#1a1a2e",
+                  background: "#ffffff",
+                  overflowY: "auto",
+                }}
+              />
             )}
           </div>
 
@@ -1353,6 +1281,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                 type="button"
                 className="footer-btn footer-btn-green"
                 onClick={() => {
+                  syncContentFromEditor();
                   const md = htmlToMd(content);
                   setMdText(md);
                   setIsMdOutOpen(true);
@@ -1517,6 +1446,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                   type="button"
                   className="btn btn-primary btn-compact"
                   onClick={() => {
+                    if (content.trim() && !confirm("বিদ্যমান কন্টেন্ট মুছে ফেলা হবে। আপনি কি নিশ্চিত?")) return;
                     const parsedHtml = mdToHtml(mdText);
                     setContent(parsedHtml);
                     pushToHistory(parsedHtml);
