@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { createUserAction } from "@/app/dashboard/admin/actions";
 
-export default function AddUserModal({ onClose }) {
+export default function AddUserModal({ onClose, onUserAdded }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -21,6 +21,7 @@ export default function AddUserModal({ onClose }) {
       setError(result.error);
     } else if (result?.success) {
       setSuccess(true);
+      if (onUserAdded) onUserAdded();
       setTimeout(() => {
         onClose();
       }, 1500);

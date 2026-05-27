@@ -76,6 +76,32 @@ export default function TopicsAdminPage() {
     }
   }, [authChecking, fetchTopicsAndProfiles]);
 
+  // Sync search query parameter on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("search");
+      if (q) {
+        setSearchTerm(q);
+        window.dispatchEvent(new CustomEvent("dashboard-search-sync", { detail: q }));
+      }
+    }
+  }, []);
+
+  // Listen to global topbar search events
+  useEffect(() => {
+    const handleGlobalSearch = (e) => {
+      setSearchTerm(e.detail || "");
+    };
+    window.addEventListener("dashboard-search", handleGlobalSearch);
+    return () => window.removeEventListener("dashboard-search", handleGlobalSearch);
+  }, []);
+
+  const handleLocalSearchChange = (val) => {
+    setSearchTerm(val);
+    window.dispatchEvent(new CustomEvent("dashboard-search-sync", { detail: val }));
+  };
+
   // Derive subjects (parent_id is null) and topics (parent_id is not null)
   const subjects = categories.filter((c) => !c.parent_id);
   const topics = categories.filter((c) => c.parent_id);
@@ -236,7 +262,7 @@ export default function TopicsAdminPage() {
                   <input
                     type="text"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => handleLocalSearchChange(e.target.value)}
                     placeholder="টপিকের নাম, স্লাগ বা লেখকের নাম দিয়ে খুঁজুন..."
                     style={{
                       width: "100%",

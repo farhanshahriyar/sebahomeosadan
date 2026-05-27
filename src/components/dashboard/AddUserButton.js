@@ -2,7 +2,7 @@
 import { useState } from "react";
 import AddUserModal from "./AddUserModal";
 
-export default function AddUserButton() {
+export default function AddUserButton({ onUserAdded }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
@@ -14,7 +14,7 @@ export default function AddUserButton() {
         <i className="fas fa-user-plus"></i> Add User
       </button>
       
-      {isModalOpen && <AddUserModal onClose={() => setIsModalOpen(false)} />}
+      {isModalOpen && <AddUserModal onClose={() => setIsModalOpen(false)} onUserAdded={onUserAdded} />}
     </>
   );
 }

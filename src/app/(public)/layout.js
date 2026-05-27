@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import MarqueeBar from "@/components/MarqueeBar";
+import FloatingContact from "@/components/FloatingContact";
 import { createServerClient } from "@supabase/ssr";
 
 // A lightweight Supabase client that does NOT use cookies,
@@ -56,6 +57,7 @@ export default async function PublicLayout({ children }) {
       <MarqueeBar />
       <Navbar categories={categories} />
       <main>{children}</main>
+      <FloatingContact />
       <Footer />
     </>
   );

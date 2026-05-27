@@ -83,6 +83,32 @@ export default function PostsPage() {
     fetchArticles();
   }, [fetchArticles]);
 
+  // Sync search query parameter on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("search");
+      if (q) {
+        setSearchTerm(q);
+        window.dispatchEvent(new CustomEvent("dashboard-search-sync", { detail: q }));
+      }
+    }
+  }, []);
+
+  // Listen to global topbar search events
+  useEffect(() => {
+    const handleGlobalSearch = (e) => {
+      setSearchTerm(e.detail || "");
+    };
+    window.addEventListener("dashboard-search", handleGlobalSearch);
+    return () => window.removeEventListener("dashboard-search", handleGlobalSearch);
+  }, []);
+
+  const handleLocalSearchChange = (val) => {
+    setSearchTerm(val);
+    window.dispatchEvent(new CustomEvent("dashboard-search-sync", { detail: val }));
+  };
+
   const handleDelete = async (id) => {
     const { error } = await supabase.from("articles").delete().eq("id", id);
     if (!error) {
@@ -260,7 +286,7 @@ export default function PostsPage() {
                   <input
                     type="text"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => handleLocalSearchChange(e.target.value)}
                     placeholder="শিরোনাম, লেখক বা বিবরণ দিয়ে খুঁজুন..."
                     style={{
                       width: "100%",

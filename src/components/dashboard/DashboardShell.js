@@ -1,11 +1,13 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/app/login/actions";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function DashboardShell({ userInfo, children }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const isAdmin = userInfo.role === "admin" || userInfo.role === "super_admin";
   const roleBadge =
@@ -23,6 +25,23 @@ export default function DashboardShell({ userInfo, children }) {
   // Sidebar collapse state
   const [collapsed, setCollapsed] = useState(false);
 
+  // Global Topbar Search State
+  const [searchValue, setSearchValue] = useState("");
+
+  // Notification States
+  const [notifications, setNotifications] = useState([]);
+  const [readIds, setReadIds] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef(null);
+
+  // Messages States
+  const [messages, setMessages] = useState([]);
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const messagesRef = useRef(null);
+
+  const supabase = createClient();
+
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setCollapsed(true);
@@ -35,17 +54,331 @@ export default function DashboardShell({ userInfo, children }) {
     });
   };
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!viewDropdownOpen) return;
     const handleClickOutside = (e) => {
-      if (viewDropdownRef.current && !viewDropdownRef.current.contains(e.target)) {
+      if (viewDropdownOpen && viewDropdownRef.current && !viewDropdownRef.current.contains(e.target)) {
         setViewDropdownOpen(false);
+      }
+      if (notificationsOpen && notificationsRef.current && !notificationsRef.current.contains(e.target)) {
+        setNotificationsOpen(false);
+      }
+      if (messagesOpen && messagesRef.current && !messagesRef.current.contains(e.target)) {
+        setMessagesOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [viewDropdownOpen]);
+  }, [viewDropdownOpen, notificationsOpen, messagesOpen]);
+
+  // Sync search value from URL query param if present
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const search = params.get("search") || "";
+      setSearchValue(search);
+    }
+  }, [pathname]);
+
+  // Listen for local search sync events from child pages
+  useEffect(() => {
+    const handleSync = (e) => {
+      setSearchValue(e.detail || "");
+    };
+    window.addEventListener("dashboard-search-sync", handleSync);
+    return () => window.removeEventListener("dashboard-search-sync", handleSync);
+  }, []);
+
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchValue(val);
+    
+    // Broadcast search value to client pages
+    window.dispatchEvent(new CustomEvent("dashboard-search", { detail: val }));
+
+    // Normalize paths by stripping trailing slashes for robust matching
+    const cleanPathname = (pathname || "").replace(/\/$/, "");
+
+    const searchablePaths = [
+      "/dashboard/posts",
+      "/dashboard/admin",
+      "/dashboard/admin/categories",
+      "/dashboard/admin/topics"
+    ];
+    
+    const isSearchable = searchablePaths.some(path => {
+      const cleanPath = path.replace(/\/$/, "");
+      return cleanPathname === cleanPath || cleanPathname.startsWith(cleanPath + "/");
+    });
+
+    // If typing on a non-searchable page, automatically redirect to posts search
+    if (!isSearchable && val.trim() !== "") {
+      router.push(`/dashboard/posts?search=${encodeURIComponent(val)}`);
+    }
+  };
+
+  // Load read notifications from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("read-notifications");
+    if (saved) {
+      try {
+        setReadIds(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  // Fetch notifications
+  useEffect(() => {
+    async function fetchNotifications() {
+      const newNotifications = [];
+
+      try {
+        if (isAdmin) {
+          // 1. Articles in 'review' status
+          const { data: reviewArticles } = await supabase
+            .from("articles")
+            .select("id, title, author_name, created_at")
+            .eq("status", "review");
+
+          if (reviewArticles) {
+            reviewArticles.forEach((art) => {
+              newNotifications.push({
+                id: `review-${art.id}`,
+                title: "রিভিউ অনুরোধ (Review Request)",
+                text: `"${art.title}" আর্টিকেলটি রিভিউয়ের জন্য জমা দেওয়া হয়েছে।`,
+                link: "/dashboard/admin/review",
+                icon: "fas fa-clipboard-check",
+                color: "#3498db",
+                time: new Date(art.created_at),
+              });
+            });
+          }
+
+          // 2. Inactive Categories / Topics suggested by authors
+          const { data: inactiveCats } = await supabase
+            .from("categories")
+            .select("id, name, parent_id, created_at")
+            .eq("is_active", false);
+
+          if (inactiveCats) {
+            inactiveCats.forEach((cat) => {
+              const isTopic = cat.parent_id !== null;
+              newNotifications.push({
+                id: `cat-${cat.id}`,
+                title: isTopic ? "নতুন টপিক প্রস্তাব" : "নতুন ক্যাটাগরি প্রস্তাব",
+                text: `"${cat.name}" নামক ${isTopic ? "টপিকটি" : "ক্যাটাগরি"} অনুমোদনের জন্য পেন্ডিং রয়েছে।`,
+                link: isTopic ? "/dashboard/admin/topics" : "/dashboard/admin/categories",
+                icon: isTopic ? "fas fa-tags" : "fas fa-folder",
+                color: "#f1c40f",
+                time: new Date(cat.created_at),
+              });
+            });
+          }
+        } else {
+          // For Author role:
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            // 3. Author's published articles
+            const { data: myPublished } = await supabase
+              .from("articles")
+              .select("id, title, published_at")
+              .eq("author_id", user.id)
+              .eq("status", "published")
+              .order("published_at", { ascending: false })
+              .limit(5);
+
+            if (myPublished) {
+              myPublished.forEach((art) => {
+                newNotifications.push({
+                  id: `pub-${art.id}`,
+                  title: "আর্টিকেল প্রকাশিত হয়েছে",
+                  text: `আপনার "${art.title}" আর্টিকেলটি সফলভাবে প্রকাশিত হয়েছে।`,
+                  link: `/articles/${art.id}`,
+                  icon: "fas fa-check-circle",
+                  color: "#2ecc71",
+                  time: new Date(art.published_at),
+                });
+              });
+            }
+
+            // 4. Approved categories/topics created by this user
+            const { data: myCats } = await supabase
+              .from("categories")
+              .select("id, name, parent_id, created_at")
+              .eq("created_by", user.id)
+              .eq("is_active", true)
+              .limit(5);
+
+            if (myCats) {
+              myCats.forEach((cat) => {
+                const isTopic = cat.parent_id !== null;
+                newNotifications.push({
+                  id: `cat-appr-${cat.id}`,
+                  title: isTopic ? "টপিক অনুমোদিত হয়েছে" : "ক্যাটাগরি অনুমোদিত হয়েছে",
+                  text: `আপনার প্রস্তাবিত "${cat.name}" ${isTopic ? "টপিকটি" : "ক্যাটাগরি"} অনুমোদিত ও সক্রিয় করা হয়েছে।`,
+                  link: "/dashboard/posts",
+                  icon: isTopic ? "fas fa-tags" : "fas fa-folder",
+                  color: "#2ecc71",
+                  time: new Date(cat.created_at),
+                });
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching notifications:", err);
+      }
+
+      // Sort notifications by date descending
+      newNotifications.sort((a, b) => b.time - a.time);
+      setNotifications(newNotifications);
+    }
+
+    fetchNotifications();
+    // Poll every 60 seconds
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [isAdmin, supabase]);
+
+  // Load and refresh messages from Supabase
+  const loadMessages = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const list = (data || []).map(msg => ({
+        id: msg.id,
+        name: msg.name,
+        email: msg.email,
+        subject: msg.subject || "কোনো বিষয় নেই",
+        message: msg.message,
+        isRead: msg.is_read,
+        date: msg.created_at
+      }));
+
+      setMessages(list);
+    } catch (err) {
+      console.error("Error loading messages from Supabase:", err);
+    }
+  }, [isAdmin, supabase]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadMessages();
+      // Poll for new messages every 30 seconds
+      const interval = setInterval(loadMessages, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdmin, loadMessages]);
+
+  const unreadNotifications = notifications.filter(n => !readIds.includes(n.id));
+  const unreadCount = unreadNotifications.length;
+
+  const unreadMessagesCount = messages.filter(m => !m.isRead).length;
+
+  const markAllAsRead = () => {
+    const allIds = notifications.map(n => n.id);
+    setReadIds(allIds);
+    localStorage.setItem("read-notifications", JSON.stringify(allIds));
+  };
+
+  const handleNotificationClick = (id) => {
+    if (!readIds.includes(id)) {
+      const updated = [...readIds, id];
+      setReadIds(updated);
+      localStorage.setItem("read-notifications", JSON.stringify(updated));
+    }
+    setNotificationsOpen(false);
+  };
+
+  const toggleMessagesDropdown = () => {
+    if (isAdmin) {
+      loadMessages();
+      setMessagesOpen((prev) => !prev);
+    }
+  };
+
+  const markAllMessagesAsRead = async () => {
+    try {
+      const unreadIds = messages.filter(m => !m.isRead).map(m => m.id);
+      if (unreadIds.length === 0) return;
+
+      const { error } = await supabase
+        .from("contacts")
+        .update({ is_read: true })
+        .in("id", unreadIds);
+
+      if (error) throw error;
+
+      const updated = messages.map(m => ({ ...m, isRead: true }));
+      setMessages(updated);
+    } catch (err) {
+      console.error("Error marking all messages as read:", err);
+    }
+  };
+
+  const handleMessageClick = async (msg) => {
+    if (msg.isRead) {
+      setSelectedMessage(msg);
+      setMessagesOpen(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("contacts")
+        .update({ is_read: true })
+        .eq("id", msg.id);
+
+      if (error) throw error;
+
+      const updated = messages.map(m => m.id === msg.id ? { ...m, isRead: true } : m);
+      setMessages(updated);
+      setSelectedMessage({ ...msg, isRead: true });
+    } catch (err) {
+      console.error("Error marking message as read:", err);
+      setSelectedMessage(msg);
+    }
+    setMessagesOpen(false);
+  };
+
+  const handleDeleteMessage = async (id) => {
+    if (!confirm("আপনি কি নিশ্চিত যে এই বার্তাটি মুছে ফেলতে চান?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("contacts")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      const updated = messages.filter(m => m.id !== id);
+      setMessages(updated);
+      setSelectedMessage(null);
+    } catch (err) {
+      console.error("Error deleting message:", err);
+      alert("বার্তাটি মুছে ফেলা যায়নি।");
+    }
+  };
+
+  const formatTimeAgo = (date) => {
+    const diffMs = new Date() - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "এইমাত্র";
+    if (diffMins < 60) return `${diffMins} মিনিট আগে`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} ঘণ্টা আগে`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} দিন আগে`;
+  };
 
   // Determine if admin features should be visible
   const showAdminFeatures = isAdmin && viewMode === "admin";
@@ -199,16 +532,142 @@ export default function DashboardShell({ userInfo, children }) {
         <header className="dashboard-topbar">
           <div className="topbar-search">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder="Search dashboard..." />
+            <input 
+              type="text" 
+              placeholder="Search dashboard..." 
+              value={searchValue}
+              onChange={handleSearchChange}
+            />
           </div>
           <div className="topbar-actions">
-            <button className="topbar-btn">
-              <i className="fas fa-bell"></i>
-              <span className="badge">3</span>
-            </button>
-            <button className="topbar-btn">
-              <i className="fas fa-envelope"></i>
-            </button>
+            {/* Notifications Bell Dropdown */}
+            <div className="notifications-container" ref={notificationsRef}>
+              <button 
+                className="topbar-btn"
+                onClick={() => setNotificationsOpen((prev) => !prev)}
+                title="Notifications"
+              >
+                <i className="fas fa-bell"></i>
+                {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
+              </button>
+
+              {notificationsOpen && (
+                <div className="notifications-dropdown">
+                  <div className="notifications-header">
+                    <h4>
+                      <i className="fas fa-bell"></i> নোটিফিকেশন ({unreadCount})
+                    </h4>
+                    {unreadCount > 0 && (
+                      <button className="mark-read-btn" onClick={markAllAsRead}>
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="notifications-list">
+                    {notifications.length === 0 ? (
+                      <div className="notifications-empty">
+                        <i className="fas fa-bell-slash"></i>
+                        <span>কোনো নোটিফিকেশন পাওয়া যায়নি</span>
+                      </div>
+                    ) : (
+                      notifications.map((notif) => {
+                        const isUnread = !readIds.includes(notif.id);
+                        return (
+                          <Link
+                            key={notif.id}
+                            href={notif.link}
+                            className={`notification-item ${isUnread ? "unread" : ""}`}
+                            onClick={() => handleNotificationClick(notif.id)}
+                          >
+                            <div 
+                              className="notification-icon-wrapper"
+                              style={{ backgroundColor: notif.color }}
+                            >
+                              <i className={notif.icon}></i>
+                            </div>
+                            <div className="notification-info">
+                              <span className="notification-title">{notif.title}</span>
+                              <span className="notification-text">{notif.text}</span>
+                              <span className="notification-time">
+                                <i className="far fa-clock"></i> {formatTimeAgo(notif.time)}
+                              </span>
+                            </div>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Messages Inbox Dropdown - Only for Admins */}
+            {isAdmin && (
+              <div className="notifications-container" ref={messagesRef}>
+                <button 
+                  className="topbar-btn"
+                  onClick={toggleMessagesDropdown}
+                  title="Messages"
+                >
+                  <i className="fas fa-envelope"></i>
+                  {unreadMessagesCount > 0 && <span className="badge">{unreadMessagesCount}</span>}
+                </button>
+
+                {messagesOpen && (
+                  <div className="notifications-dropdown">
+                    <div className="notifications-header">
+                      <h4>
+                        <i className="fas fa-envelope"></i> ইনবক্স (Messages)
+                      </h4>
+                      {unreadMessagesCount > 0 && (
+                        <button className="mark-read-btn" onClick={markAllMessagesAsRead}>
+                          Mark read
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="notifications-list">
+                      {messages.length === 0 ? (
+                        <div className="notifications-empty">
+                          <i className="fas fa-envelope-open"></i>
+                          <span>ইনবক্স খালি</span>
+                        </div>
+                      ) : (
+                        messages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`notification-item ${!msg.isRead ? "unread" : ""}`}
+                            onClick={() => handleMessageClick(msg)}
+                            style={{ cursor: "pointer" }}
+                          >
+                            <div 
+                              className="notification-icon-wrapper"
+                              style={{ backgroundColor: "#e67e22" }}
+                            >
+                              <i className="fas fa-user"></i>
+                            </div>
+                            <div className="notification-info">
+                              <span className="notification-title">{msg.name}</span>
+                              <span className="notification-text" style={{ fontWeight: !msg.isRead ? "bold" : "normal" }}>
+                                {msg.subject}
+                              </span>
+                              <span className="notification-text" style={{ fontSize: "11px", color: "#666" }}>
+                                {msg.message.substring(0, 60)}{msg.message.length > 60 ? "..." : ""}
+                              </span>
+                              <span className="notification-time">
+                                <i className="far fa-clock"></i> {formatTimeAgo(new Date(msg.date))}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="user-profile">
               <div className="user-avatar-placeholder">
                 {userInfo.name.charAt(0).toUpperCase()}
@@ -224,6 +683,66 @@ export default function DashboardShell({ userInfo, children }) {
         {/* Content */}
         <div className="dashboard-content">{children}</div>
       </main>
+
+      {/* Message Details Modal Overlay */}
+      {selectedMessage && (
+        <div className="modal-overlay" style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 11000
+        }}>
+          <div className="modal-content" style={{
+            background: "white", padding: "30px", borderRadius: "12px",
+            width: "100%", maxWidth: "500px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+            color: "#333", position: "relative"
+          }}>
+            <div className="modal-header" style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "15px"
+            }}>
+              <h2 style={{ margin: 0, fontSize: "1.3rem", color: "var(--primary-dark)" }}>বার্তা বিবরণ (Message Details)</h2>
+              <button className="close-btn" style={{
+                background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer", color: "#666"
+              }} onClick={() => setSelectedMessage(null)}>
+                &times;
+              </button>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "14px" }}>
+              <div><strong>প্রেরক (From):</strong> {selectedMessage.name} ({selectedMessage.email})</div>
+              <div><strong>বিষয় (Subject):</strong> {selectedMessage.subject}</div>
+              <div><strong>তারিখ (Date):</strong> {new Date(selectedMessage.date).toLocaleString("bn-BD")}</div>
+              <div style={{
+                background: "#f9f9f9", padding: "12px", borderRadius: "8px",
+                border: "1px solid #eee", whiteSpace: "pre-wrap", marginTop: "8px",
+                lineHeight: "1.5", fontSize: "13.5px"
+              }}>
+                {selectedMessage.message}
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{
+              display: "flex", justifyContent: "flex-end", gap: "10px",
+              marginTop: "25px", borderTop: "1px solid #eee", paddingTop: "15px"
+            }}>
+              <button 
+                className="btn btn-secondary btn-compact"
+                onClick={() => handleDeleteMessage(selectedMessage.id)}
+                style={{ background: "#e74c3c", color: "white", border: "none", cursor: "pointer" }}
+              >
+                <i className="fas fa-trash"></i> মুছুন (Delete)
+              </button>
+              <a 
+                href={`mailto:${selectedMessage.email}?subject=RE: ${encodeURIComponent(selectedMessage.subject)}`}
+                className="btn btn-primary btn-compact"
+                style={{ textDecoration: "none" }}
+              >
+                <i className="fas fa-reply"></i> উত্তর দিন (Reply)
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

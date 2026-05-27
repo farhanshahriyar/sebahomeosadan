@@ -1,9 +1,55 @@
-export const metadata = {
-  title: "যোগাযোগ | Good Health Homeo Care",
-  description: "Good Health Homeo Care এর সাথে যোগাযোগ করুন। ঠিকানা: খঞ্জনপুর, জয়পুরহাট, বাংলাদেশ।",
-};
+"use client";
+
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ContactPage() {
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setSuccess(false);
+
+    const name = document.getElementById("contact-name").value;
+    const email = document.getElementById("contact-email").value;
+    const subject = document.getElementById("contact-subject").value;
+    const message = document.getElementById("contact-message").value;
+
+    try {
+      const supabase = createClient();
+      const { error: insertError } = await supabase
+        .from("contacts")
+        .insert([
+          {
+            name,
+            email,
+            subject: subject || "কোনো বিষয় নেই",
+            message,
+            is_read: false
+          }
+        ]);
+
+      if (insertError) throw insertError;
+
+      setSuccess(true);
+      e.target.reset();
+
+      // Hide success message after 5 seconds
+      setTimeout(() => {
+        setSuccess(false);
+      }, 5000);
+    } catch (err) {
+      console.error("Error submitting contact message:", err);
+      setError("বার্তাটি পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <section className="contact-hero" id="contact-hero">
@@ -17,23 +63,66 @@ export default function ContactPage() {
         <div className="contact-grid">
           <div className="contact-form" id="contact-form">
             <h2>আমাদের একটি বার্তা পাঠান</h2>
-            <form>
+            {success ? (
+              <div 
+                style={{ 
+                  background: "#e8f5e9", 
+                  color: "#0d7a3e", 
+                  padding: "16px", 
+                  borderRadius: "8px", 
+                  marginBottom: "20px", 
+                  fontWeight: "600",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}
+              >
+                <i className="fas fa-check-circle" style={{ fontSize: "20px" }}></i>
+                আপনার বার্তাটি সফলভাবে পাঠানো হয়েছে! ধন্যবাদ।
+              </div>
+            ) : null}
+            {error ? (
+              <div 
+                style={{ 
+                  background: "#ffebee", 
+                  color: "#c62828", 
+                  padding: "16px", 
+                  borderRadius: "8px", 
+                  marginBottom: "20px", 
+                  fontWeight: "600",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px"
+                }}
+              >
+                <i className="fas fa-exclamation-circle" style={{ fontSize: "20px" }}></i>
+                {error}
+              </div>
+            ) : null}
+            <form onSubmit={handleSubmit}>
               <div className="form-row">
                 <div className="form-group">
-                  <input type="text" placeholder="নাম" required id="contact-name" />
+                  <input type="text" placeholder="নাম" required id="contact-name" disabled={loading} />
                 </div>
                 <div className="form-group">
-                  <input type="email" placeholder="ইমেইল" required id="contact-email" />
+                  <input type="email" placeholder="ইমেইল" required id="contact-email" disabled={loading} />
                 </div>
               </div>
               <div className="form-group">
-                <input type="text" placeholder="বিষয়" id="contact-subject" />
+                <input type="text" placeholder="বিষয়" id="contact-subject" disabled={loading} />
               </div>
               <div className="form-group">
-                <textarea placeholder="বার্তা" required id="contact-message" />
+                <textarea placeholder="বার্তা" required id="contact-message" style={{ minHeight: "120px" }} disabled={loading} />
               </div>
-              <button type="submit" className="btn btn-accent" id="contact-submit">
-                বার্তা পাঠান
+              <button type="submit" className="btn btn-accent" id="contact-submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin" style={{ marginRight: "8px" }}></i>
+                    বার্তা পাঠানো হচ্ছে...
+                  </>
+                ) : (
+                  "বার্তা পাঠান"
+                )}
               </button>
             </form>
           </div>
@@ -50,7 +139,7 @@ export default function ContactPage() {
                 <span>ইমেইল ঠিকানা</span>
               </li>
               <li>
-                <h5>খঞ্জনপুর, জয়পুরহাট<br />বাংলাদেশ</h5>
+                <h5>খঞ্জনপুর, জয়পুরহাট<br />বাংলাদেশ</h5>
                 <span>রাস্তার ঠিকানা</span>
               </li>
             </ul>
