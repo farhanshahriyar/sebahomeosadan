@@ -10,16 +10,26 @@ export const metadata = {
 export default async function HomePage() {
   const supabase = await createClient();
 
-  // Fetch the latest 3 published articles
-  const { data: articles, error } = await supabase
-    .from("articles")
-    .select("*, categories(name)")
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
-    .limit(3);
+  // Fetch the latest 3 published articles and landing page settings in parallel
+  const [articlesRes, settingsRes] = await Promise.all([
+    supabase
+      .from("articles")
+      .select("*, categories(name)")
+      .eq("status", "published")
+      .order("published_at", { ascending: false })
+      .limit(3),
+    supabase
+      .from("landing_settings")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle()
+  ]);
 
-  if (error) {
-    console.error("Error fetching homepage articles:", error);
+  const articles = articlesRes.data;
+  const landingSettings = settingsRes.data;
+
+  if (articlesRes.error) {
+    console.error("Error fetching homepage articles:", articlesRes.error);
   }
 
   // Fallback static articles in case database is empty or queries fail
@@ -51,7 +61,24 @@ export default async function HomePage() {
     }
   ];
 
-  const displayArticles = articles && articles.length > 0 ? articles : fallbackArticles;
+  let displayArticles = [];
+  if (landingSettings?.featured_articles && landingSettings.featured_articles.length > 0) {
+    const { data: featuredData } = await supabase
+      .from("articles")
+      .select("*, categories(name)")
+      .in("id", landingSettings.featured_articles)
+      .eq("status", "published");
+
+    if (featuredData && featuredData.length > 0) {
+      displayArticles = landingSettings.featured_articles
+        .map(id => featuredData.find(a => a.id === id))
+        .filter(Boolean);
+    }
+  }
+
+  if (displayArticles.length === 0) {
+    displayArticles = articles && articles.length > 0 ? articles : fallbackArticles;
+  }
 
   return (
     <>
@@ -60,24 +87,21 @@ export default async function HomePage() {
         <div className="container">
           <div className="hero-text">
             <h1>
-              <span className="highlight">আপনার সঠিক সিদ্ধান্তই আপনাকে</span>
-              রাখতে পারে সুস্থ এবং সুরক্ষিত।
+              <span className="highlight">{landingSettings?.hero_title || "আপনার সঠিক সিদ্ধান্তই আপনাকে"}</span>
+              {landingSettings?.hero_subtitle || "রাখতে পারে সুস্থ এবং সুরক্ষিত।"}
             </h1>
             <div className="quote">
               <p>
-                &ldquo;Medicine is a science of experience; its object is to
-                eradicate diseases by means of remedies. The knowledge of
-                disease, the knowledge of remedies and the knowledge of their
-                employment, constitute medicine.&rdquo;
+                &ldquo;{landingSettings?.hero_quote || "Medicine is a science of experience; its object is to eradicate diseases by means of remedies. The knowledge of disease, the knowledge of remedies and the knowledge of their employment, constitute medicine."}&rdquo;
               </p>
-              <p>— Samuel Hahnemann</p>
+              <p>— {landingSettings?.hero_quote_author || "Samuel Hahnemann"}</p>
             </div>
-            <a href="tel:+8801720970031" className="btn btn-primary" id="contact-btn">
+            <a href={`tel:${landingSettings?.hero_phone || "+8801720970031"}`} className="btn btn-primary" id="contact-btn">
               <i className="fa fa-phone" /> যোগাযোগ করুন
             </a>
           </div>
           <div className="hero-img">
-            <img src="/img/img2.png" alt="হোমিওপ্যাথি চিকিৎসা" />
+            <img src={landingSettings?.hero_image || "/img/img2.png"} alt="হোমিওপ্যাথি চিকিৎসা" />
           </div>
         </div>
       </section>

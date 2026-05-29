@@ -508,6 +508,14 @@ export default function DashboardShell({ userInfo, children }) {
           <Link href="/dashboard" className="dashboard-nav-item">
             <i className="fas fa-comments"></i> <span>Testimonials</span>
           </Link>
+          {showAdminFeatures && (
+            <Link 
+              href="/dashboard/admin/landing" 
+              className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/landing") ? "active" : ""}`}
+            >
+              <i className="fas fa-desktop"></i> <span>Landing Page</span>
+            </Link>
+          )}
 
           <div className="dashboard-nav-title"><span>Settings</span></div>
           {showAdminFeatures && (

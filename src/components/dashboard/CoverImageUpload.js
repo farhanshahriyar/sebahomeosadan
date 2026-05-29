@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useUploadThing } from "@/lib/uploadthing";
 
-export default function CoverImageUpload({ value, onChange }) {
+export default function CoverImageUpload({ value, onChange, label = "কভার ছবি" }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
@@ -97,7 +97,7 @@ export default function CoverImageUpload({ value, onChange }) {
   if (value) {
     return (
       <div className="cover-upload-wrapper">
-        <label>কভার ছবি</label>
+        <label>{label}</label>
         <div className="cover-preview">
           <div className="cover-preview-image">
             <img src={value} alt="কভার ছবি প্রিভিউ" />
@@ -143,7 +143,7 @@ export default function CoverImageUpload({ value, onChange }) {
   // ─── Upload Zone (no image yet) ───
   return (
     <div className="cover-upload-wrapper">
-      <label>কভার ছবি</label>
+      <label>{label}</label>
       <div
         className={`cover-dropzone${dragActive ? " drag-active" : ""}${uploading ? " uploading" : ""}`}
         onDrop={handleDrop}

@@ -20,21 +20,31 @@ function createPublicClient() {
 }
 
 export default async function PublicLayout({ children }) {
-  // Fetch active categories from database for the navbar
+  // Fetch active categories from database for the navbar and landing page settings
   let categories = [];
+  let landingSettings = null;
   try {
     const supabase = createPublicClient();
-    const { data } = await supabase
-      .from("categories")
-      .select("id, name, slug, description, parent_id")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true });
-    if (data) {
+    
+    const [categoriesRes, settingsRes] = await Promise.all([
+      supabase
+        .from("categories")
+        .select("id, name, slug, description, parent_id")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("landing_settings")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle()
+    ]);
+
+    if (categoriesRes.data) {
       // Find main categories (subjects)
-      const subjects = data.filter((c) => !c.parent_id);
+      const subjects = categoriesRes.data.filter((c) => !c.parent_id);
       // Map topics as children of subjects
       categories = subjects.map((subject) => {
-        const topics = data.filter((c) => c.parent_id === subject.id);
+        const topics = categoriesRes.data.filter((c) => c.parent_id === subject.id);
         return {
           ...subject,
           children: topics.length > 0 ? topics.map((t) => ({
@@ -44,17 +54,21 @@ export default async function PublicLayout({ children }) {
         };
       });
     }
+
+    if (settingsRes.data) {
+      landingSettings = settingsRes.data;
+    }
   } catch (e) {
     // Silently fail — navbar will fall back to static items only
-    console.error("Failed to fetch categories for navbar:", e);
+    console.error("Failed to fetch layout data:", e);
   }
 
   return (
     <>
       <div className="top-banner">
-        <img src="/img/banner.png" alt="Good Health Homeo Care ব্যানার" />
+        <img src={landingSettings?.banner_image || "/img/banner.png"} alt="Good Health Homeo Care ব্যানার" />
       </div>
-      <MarqueeBar />
+      <MarqueeBar text={landingSettings?.marquee_text} />
       <Navbar categories={categories} />
       <main>{children}</main>
       <FloatingContact />
