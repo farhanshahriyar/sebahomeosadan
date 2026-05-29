@@ -61,3 +61,6 @@ if (content.includes(target1) && content.includes(target2)) {
 } else {
   console.error("Failed to find replacement targets in page.js");
 }
+
+
+
