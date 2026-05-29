@@ -14,6 +14,256 @@ function generateSlug(title) {
     || `article-${Date.now()}`;
 }
 
+function reconstructLine(items) {
+  if (items.length === 0) return "";
+  let lineStr = items[0].str || "";
+  let lastX = items[0].transform[4];
+  let lastWidth = items[0].width || 0;
+  
+  for (let i = 1; i < items.length; i++) {
+    const item = items[i];
+    const currStr = item.str || "";
+    const currX = item.transform[4];
+    
+    const hasExplicitSpace = 
+      lineStr.endsWith(" ") || 
+      currStr.startsWith(" ") || 
+      currStr === " " || 
+      lineStr === " ";
+    
+    if (hasExplicitSpace) {
+      if (lineStr.endsWith(" ") && currStr.startsWith(" ")) {
+        lineStr += currStr.trimStart();
+      } else {
+        lineStr += currStr;
+      }
+    } else {
+      const gap = currX - (lastX + lastWidth);
+      if (gap > 2.5) {
+        lineStr += " " + currStr;
+      } else {
+        lineStr += currStr;
+      }
+    }
+    
+    lastX = currX;
+    lastWidth = item.width || 0;
+  }
+  return lineStr;
+}
+
+function cleanBanglaPdfText(text) {
+  if (!text) return text;
+
+  const replacements = [
+    [/\bজীবননের\b/g, "জীবনের"],
+    [/\bঅসম্বনেদ্য\b/g, "অবিচ্ছেদ্য"],
+    [/\bশারীররক\b/g, "শারীরিক"],
+    [/\bসবনশষনের\b/g, "বিশেষজ্ঞের"],
+    [/\bসবনশষজ্ঞের\b/g, "বিশেষজ্ঞের"],
+    [/\bপ্রনোজন\b/g, "প্রয়োজন"],
+    [/\bপ্র নোজন\b/g, "প্রয়োজন"],
+    [/\bযকাননা\b/g, "কোনো"],
+    [/\bযযখানন\b/g, "যেখানে"],
+    [/\bবুঝনত\b/g, "বুঝতে"],
+    [/\bবু ঝনত\b/g, "বুঝতে"],
+    [/\bপানর\b/g, "পারে"],
+    [/\bপানরন\b/g, "পারেন"],
+    [/\bস্বাভাববক\b/g, "স্বাভাবিক"],
+    [/\bস্ব া ভাববক\b/g, "স্বাভাবিক"],
+    [/\bচাপনর\b/g, "চাপের"],
+    [/\bসনঙ্গ\b/g, "সঙ্গে"],
+    [/\bমাননিয়\b/g, "মানিয়ে"],
+    [/\bচলনত\b/g, "চলতে"],
+    [/\bকরনত\b/g, "করতে"],
+    [/\bকরনল\b/g, "করলে"],
+    [/\bথাকনত\b/g, "থাকতে"],
+    [/\bথাকনল\b/g, "থাকলে"],
+    [/\bথাকব\b/g, "থাকবে"],
+    [/\bআপনাকই\b/g, "আপনাকেই"],
+    [/\bঅননক\b/g, "অনেক"],
+    [/\bমননর\b/g, "মনের"],
+    [/\bমনন\b/g, "মনে"],
+    [/\bহনত\b/g, "হতে"],
+    [/\bহনল\b/g, "হলে"],
+    [/\bহনয়\b/g, "হয়ে"],
+    [/\bযকবল\b/g, "কেবল"],
+    [/\bযরাগ\b/g, "রোগ"],
+    [/\bযরাগের\b/g, "রোগের"],
+    [/\bযরাগসমূহ\b/g, "রোগসমূহ"],
+    [/\bসননে\b/g, "সম্বন্ধে"],
+    [/\bিনেতন\b/g, "সচেতন"],
+    [/\bঅবনসতর\b/g, "অবণতির"],
+    [/\bকারণন\b/g, "কারণে"],
+    [/\bজনন্য\b/g, "জন্য"],
+    [/\bযপছনন\b/g, "পেছনে"],
+    [/\bযজননটিক\b/g, "জেনেটিক"],
+    [/\bইতসহি\b/g, "ইতিহাস"],
+    [/\bপসরনবশ\b/g, "পরিবেশ"],
+    [/\bপসরসস্থত\b/g, "পরিস্থিতি"],
+    [/\bপসরসস্থতি\b/g, "পরিস্থিতি"],
+    [/\bশশবকালীন\b/g, "শৈশবকালীন"],
+    [/\bআোঘাত\b/g, "আঘাত"],
+    [/\bsপ্র োজন\b/g, "প্রিয়জন"],
+    [/\bসপ্র োজন\b/g, "প্রিয়জন"],
+    [/\bহারাননা\b/g, "হারানো"],
+    [/\bসশশুদের\b/g, "শিশুদের"],
+    [/\bতানদের\b/g, "তাদের"],
+    [/\bওেরনর\b/g, "আচরণের"],
+    [/\bsদনক\b/g, "দিকে"],
+    [/\bসদনক\b/g, "দিকে"],
+    [/\bযদওো\b/g, "দেওয়া"],
+    [/\bপরসবর্তন\b/g, "পরিবর্তন"],
+    [/\bযজদ\b/g, "জেদি"],
+    [/\bযানওো\b/g, "যাওয়া"],
+    [/\bকাল্পসনক\b/g, "কাল্পনিক"],
+    [/\bসনবে\b/g, "বিষয়"],
+    [/\bসনমে\b/g, "নিয়ে"],
+    [/\bপড়ানশানা\b/g, "পড়াশোনা"],
+    [/\bমননানযাগের\b/g, "মনোযোগের"],
+    [/\bকানজ\b/g, "কাজে"],
+    [/\bসস্পৃহা\b/g, "স্পৃহা"],
+    [/\bঅસમস্যা\b/g, "সমস্যা"],
+    [/\bসু সনসদষ্ট\b/g, "সুনির্দিষ্ট"],
+    [/\bপ্রসত সদনই\b/g, "প্রতিদিনই"],
+    [/\bপ্রসত\b/g, "প্রতি"],
+    [/\bসডসজটাল\b/g, "ডিজিটাল"],
+    [/\bযমাবাইল\b/g, "মোবাইল"],
+    [/\bযgমনমর\b/g, "গেমসের"],
+    [/\bযগমনমর\b/g, "গেমসের"],
+    [/\bঝুঁ নক\b/g, "ঝুঁকে"],
+    [/\bযকনড়\b/g, "কেড়ে"],
+    [/\bসননল\b/g, "নিলে"],
+    [/\bঅসস্থরতা\b/g, "অস্থিরতা"],
+    [/\bsনরফ - যকায়ার\b/g, "self-care"],
+    [/\bসনরফ - যকায়ার\b/g, "self-care"],
+    [/\bsনরফ\b/g, "self"],
+    [/\bসনরফ\b/g, "self"],
+    [/\bযকায়ার\b/g, "care"],
+    [/\bমানসিকভাবব\b/g, "মানসিকভাবে"],
+    [/\bপযাপ্ত\b/g, "পর্যাপ্ত"],
+    [/\bsু সম\b/g, "সুষম"],
+    [/\bসু সম\b/g, "সুষম"],
+    [/\bব্যোম\b/g, "ব্যায়াম"],
+    [/\bযথনক\b/g, "থেকে"],
+    [/\bএনডরফিন\b/g, "এন্ডোরফিন"],
+    [/\bহরনমান\b/g, "হরমোন"],
+    [/\bআমঞ্জস্যতা\b/g, "সামঞ্জস্যতা"],
+    [/\bঅসস্থূ\b/g, "অসুস্থ"],
+    [/\bsডনপ্রশন\b/g, "ডিপ্রেশন"],
+    [/\bসডনপ্রশন\b/g, "ডিপ্রেশন"],
+    [/\bsবদ্বেগতা\b/g, "উদ্বেগ"],
+    [/\bসবদ্বেগতা\b/g, "উদ্বেগ"],
+    [/\bsবদ্বেগ\b/g, "উদ্বিগ্ন"],
+    [/\bসবদ্বেগ\b/g, "উদ্বিগ্ন"],
+    [/\bপাওো\b/g, "পাওয়া"],
+    [/\bহওো\b/g, "হওয়া"],
+    [/\bখাওো\b/g, "খাওয়া"],
+    [/\bখাদ্যাভ্যানি\b/g, "খাদ্যাভ্যাসে"],
+    [/\bসননজনক\b/g, "নিজেকে"],
+    [/\bঅসনদ্রা\b/g, "অনিদ্রা"],
+    [/\bঅসতসর্ক\b/g, "অতিরিক্ত"],
+    [/\bলক্ষণ নলা\b/g, "লক্ষণগুলো"],
+    [/\bলক্ষণ িব\b/g, "লক্ষণ বা"],
+    
+    [/ যকবল /g, " কেবল "],
+    [/ যকাননা /g, " কোনো "],
+    [/ যরাগ /g, " রোগ "],
+    [/ যরাগের /g, " রোগের "],
+    [/ যরাগসমূহ /g, " রোগসমূহ "],
+    [/ যযখানন /g, " যেখানে "],
+    [/ বুঝনত /g, " বুঝতে "],
+    [/ পানর /g, " পারে "],
+    [/ পানরন /g, " পারেন "],
+    [/ করব /g, " করবে "],
+    [/ করব ন /g, " করবেন "],
+    [/ করবন /g, " করবেন "],
+    [/ স্বাভাববক /g, " স্বাভাবিক "],
+    [/ চাপনর /g, " চাপের "],
+    [/ সনঙ্গ /g, " সঙ্গে "],
+    [/ মাননিয় /g, " মানিয়ে "],
+    [/ চলনত /g, " চলতে "],
+    [/ করনত /g, " করতে "],
+    [/ করনল /g, " করলে "],
+    [/ থাকনত /g, " থাকতে "],
+    [/ থাকনল /g, " থাকলে "],
+    [/ থাকব /g, " থাকবে "],
+    [/ আপনাকই /g, " আপনাকেই "],
+    [/ অননক /g, " অনেক "],
+    [/ মননর /g, " মনের "],
+    [/ মনন /g, " মনে "],
+    [/ হনত /g, " হতে "],
+    [/ হনল /g, " হলে "],
+    [/ হনয় /g, " হয়ে "],
+    [/ সননে /g, " সম্বন্ধে "],
+    [/ িনেতন /g, " সচেতন "],
+    [/ কারণন /g, " কারণে "],
+    [/ যপছনন /g, " পেছনে "],
+    [/ যজননটিক /g, " জেনেটিক "],
+    [/ ইতসহি /g, " ইতিহাস "],
+    [/ পসরনবশ /g, " পরিবেশ "],
+    [/ পসরসস্থত /g, " परिस्थिति "],
+    [/ সপ্র োজন /g, " প্রিয়জন "],
+    [/ হারাননা /g, " হারানো "],
+    [/ সশশুদের /g, " শিশুদের "],
+    [/ তানদের /g, " তাদের "],
+    [/ সদনক /g, " দিকে "],
+    [/ যদওো /g, " দেওয়া "],
+    [/ পরসবর্তন /g, " পরিবর্তন "],
+    [/ যজদ /g, " জেদি "],
+    [/ যানওো /g, " যাওয়া "],
+    [/ কাল্পসনক /g, " কাল্পনিক "],
+    [/ সনবে /g, " বিষয় "],
+    [/ সনমে /g, " নিয়ে "],
+    [/ পড়ানশানা /g, " পড়াশোনা "],
+    [/ মননানযাগের /g, " মনোযোগের "],
+    [/ কানজ /g, " কাজে "],
+    [/ সু সনসদষ্ট /g, " সুনির্দিষ্ট "],
+    [/ প্রসত সদনই /g, " প্রতিদিনই "],
+    [/ প্রসত /g, " প্রতি "],
+    [/ সডসজটাল /g, " ডিজিটাল "],
+    [/ যমাবাইল /g, " মোবাইল "],
+    [/ যgমনমর /g, " গেমসের "],
+    [/ যগমনমর /g, " গেমসের "],
+    [/ ঝুঁ নক /g, " ঝুঁক "],
+    [/ যকনড় /g, " কেড়ে "],
+    [/ সননল /g, " নিলে "],
+    [/ অসস্থরতা /g, " অস্থিরতা "],
+    [/ পযাপ্ত /g, " পর্যাপ্ত "],
+    [/ সু সম /g, " সুষম "],
+    [/ ব্যোম /g, " ব্যায়াম "],
+    [/ যথনক /g, " থেকে "],
+    [/ হরনমান /g, " হরমোন "],
+    [/ সবদ্বেগতা /g, " উদ্বেগ "],
+    [/ সবদ্বেগ /g, " উদ্বিগ্ন "],
+    [/ পাওো /g, " পাওয়া "],
+    [/ হওো /g, " হওয়া "],
+    [/ খাওো /g, " খাওয়া "],
+    [/ সননজনক /g, " নিজেকে "],
+    [/ অসনদ্রা /g, " অনিদ্রা "],
+    [/ অসতসর্ক /g, " অতিরিক্ত "],
+    [/ লক্ষণ নলা /g, " লক্ষণগুলো "],
+    [/ লক্ষণ িব /g, " লক্ষণ বা "],
+  ];
+
+  let cleaned = text;
+  for (const [pattern, replacement] of replacements) {
+    cleaned = cleaned.replace(pattern, replacement);
+  }
+  
+  // Specific contextual replacements
+  cleaned = cleaned.replace(/ না থাকা নে\b/g, " না থাকা নয়");
+  cleaned = cleaned.replace(/ ততটা নে\b/g, " ততটা নয়");
+  cleaned = cleaned.replace(/ যরাগ না থাকা নে\b/g, " রোগ না থাকা নয়");
+  cleaned = cleaned.replace(/ ঠিক ততটা নে\b/g, " ঠিক ততটা নয়");
+  cleaned = cleaned.replace(/ থাকা নে\b/g, " থাকা নয়");
+  cleaned = cleaned.replace(/িব িমে/g, "সব সময়");
+  cleaned = cleaned.replace(/অসস্থূ/g, "অসুস্থ");
+  cleaned = cleaned.replace(/হনে/g, "হয়");
+
+  return cleaned;
+}
+
 export default function ArticleEditor({ article, onSave, onCancel }) {
   const [title, setTitle] = useState(article?.title || "");
   const [slug, setSlug] = useState(article?.slug || "");
@@ -35,10 +285,13 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [suggestError, setSuggestError] = useState(null);
   const [showBlockDropdown, setShowBlockDropdown] = useState(false);
   const [activeBlockStyle, setActiveBlockStyle] = useState("Paragraph");
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [history, setHistory] = useState([article?.content || ""]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [isMdInOpen, setIsMdInOpen] = useState(false);
   const [isMdOutOpen, setIsMdOutOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
   const [mdText, setMdText] = useState("");
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
@@ -46,6 +299,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
 
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const savedSelectionRangeRef = useRef(null);
   const historyIndexRef = useRef(0);
   const historyRef = useRef([article?.content || ""]);
   const editorRef = useRef(null);
@@ -210,6 +464,14 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     window.addEventListener("click", handleClose);
     return () => window.removeEventListener("click", handleClose);
   }, [showBlockDropdown]);
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!showExportDropdown) return;
+    const handleClose = () => setShowExportDropdown(false);
+    window.addEventListener("click", handleClose);
+    return () => window.removeEventListener("click", handleClose);
+  }, [showExportDropdown]);
 
   const handleDropdownToggle = (e) => {
     e.stopPropagation();
@@ -380,23 +642,47 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   };
 
   const handleInsertLink = () => {
-    if (editorRef.current) editorRef.current.focus();
-    const url = prompt("লিংক ইউআরএল (URL) লিখুন:");
-    if (url === null) return;
-    const formattedUrl = url.trim() ? (url.startsWith("http://") || url.startsWith("https://") ? url.trim() : `https://${url.trim()}`) : "";
-    if (!formattedUrl) return;
-    document.execCommand("createLink", false, formattedUrl);
-    // Set target="_blank" on the created link
+    // Save current selection range before losing focus to the modal
     const sel = window.getSelection();
+    if (sel.rangeCount > 0) {
+      savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+    } else {
+      savedSelectionRangeRef.current = null;
+    }
+    setLinkUrl("");
+    setIsLinkModalOpen(true);
+  };
+
+  const handleConfirmLink = () => {
+    const url = linkUrl.trim();
+    if (!url) {
+      setIsLinkModalOpen(false);
+      return;
+    }
+
+    // Restore selection in the editor
+    if (editorRef.current) editorRef.current.focus();
+    const sel = window.getSelection();
+    if (savedSelectionRangeRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedSelectionRangeRef.current);
+    }
+
+    const formattedUrl = url.startsWith("http://") || url.startsWith("https://") ? url : `https://${url}`;
+    document.execCommand("createLink", false, formattedUrl);
+
+    // Set target="_blank" on the created link
     if (sel.rangeCount) {
       const range = sel.getRangeAt(0);
       let linkEl = range.startContainer;
       while (linkEl && linkEl.tagName !== "A") linkEl = linkEl.parentNode;
       if (linkEl?.tagName === "A") linkEl.setAttribute("target", "_blank");
     }
+
     syncContentFromEditor();
     const html = editorRef.current?.innerHTML || "";
     pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+    setIsLinkModalOpen(false);
   };
 
   const handleClearFormatting = () => {
@@ -528,7 +814,9 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     try {
       // DOCX import via mammoth
       if (fileName.endsWith(".docx")) {
-        const mammoth = await import("mammoth");
+        const mammothModule = await import("mammoth");
+        // Handle both default and named export patterns
+        const mammoth = mammothModule.default || mammothModule;
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.convertToHtml({ arrayBuffer });
         const finalContent = result.value || "";
@@ -539,67 +827,120 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         pushToHistory(finalContent);
         if (editorRef.current) editorRef.current.innerHTML = finalContent;
       }
+      // Unsupported .doc format (old Word binary format)
+      else if (fileName.endsWith(".doc")) {
+        setError("পুরানো .doc ফরম্যাট সাপোর্ট করে না। দয়া করে ফাইলটি .docx ফরম্যাটে সংরক্ষণ করে আবার চেষ্টা করুন।");
+      }
       // PDF import via pdfjs-dist
       else if (fileName.endsWith(".pdf")) {
-        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+        const extractTextFromPDF = async (pdfObj) => {
+          const totalPages = pdfObj.numPages;
+          const allParagraphs = [];
 
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const totalPages = pdf.numPages;
-        const allParagraphs = [];
+          for (let i = 1; i <= totalPages; i++) {
+            const page = await pdfObj.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            // Group text items into lines based on Y position
+            const lines = [];
+            let currentLineItems = [];
+            let lastY = null;
 
-        for (let i = 1; i <= totalPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          
-          // Group text items into lines based on Y position
-          const lines = [];
-          let currentLine = [];
-          let lastY = null;
-
-          for (const item of textContent.items) {
-            if (item.str.trim() === "") continue;
-            const y = Math.round(item.transform[5]);
-            if (lastY !== null && Math.abs(y - lastY) > 3) {
-              // New line detected
-              if (currentLine.length > 0) {
-                lines.push(currentLine.join(" "));
+            for (const item of textContent.items) {
+              if (item.str === undefined || item.str === null) continue;
+              const y = Math.round(item.transform[5]);
+              if (lastY !== null && Math.abs(y - lastY) > 3) {
+                // New line detected
+                if (currentLineItems.length > 0) {
+                  lines.push(reconstructLine(currentLineItems));
+                }
+                currentLineItems = [item];
+              } else {
+                currentLineItems.push(item);
               }
-              currentLine = [item.str];
-            } else {
-              currentLine.push(item.str);
+              lastY = y;
             }
-            lastY = y;
-          }
-          if (currentLine.length > 0) {
-            lines.push(currentLine.join(" "));
-          }
+            if (currentLineItems.length > 0) {
+              lines.push(reconstructLine(currentLineItems));
+            }
 
-          // Group consecutive lines into paragraphs (blank-line separated)
-          let currentParagraph = [];
-          for (const line of lines) {
-            if (line.trim() === "") {
-              if (currentParagraph.length > 0) {
-                allParagraphs.push(`<p>${currentParagraph.join(" ")}</p>`);
-                currentParagraph = [];
+            // Group consecutive lines into paragraphs (blank-line separated)
+            let currentParagraph = [];
+            for (const line of lines) {
+              if (line.trim() === "") {
+                if (currentParagraph.length > 0) {
+                  allParagraphs.push(`<p>${cleanBanglaPdfText(currentParagraph.join(" "))}</p>`);
+                  currentParagraph = [];
+                }
+              } else {
+                currentParagraph.push(line.trim());
               }
-            } else {
-              currentParagraph.push(line.trim());
+            }
+            if (currentParagraph.length > 0) {
+              allParagraphs.push(`<p>${cleanBanglaPdfText(currentParagraph.join(" "))}</p>`);
             }
           }
-          if (currentParagraph.length > 0) {
-            allParagraphs.push(`<p>${currentParagraph.join(" ")}</p>`);
-          }
-        }
 
-        const finalContent = allParagraphs.join("\n");
-        if (!finalContent.trim()) {
-          setError("PDF ফাইল থেকে কোনো টেক্সট বের করা যায়নি। ছবি-ভিত্তিক PDF সাপোর্ট করে না।");
-        } else {
-          setContent(finalContent);
-          pushToHistory(finalContent);
-          if (editorRef.current) editorRef.current.innerHTML = finalContent;
+          return allParagraphs.join("\n");
+        };
+
+        try {
+          const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+          // Point to the pre-copied worker in /public
+          if (typeof window !== "undefined") {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+          }
+
+          const arrayBuffer = await file.arrayBuffer();
+          const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(arrayBuffer),
+            useWorkerFetch: false,
+            isEvalSupported: false,
+            useSystemFonts: true,
+          });
+
+          const pdf = await loadingTask.promise;
+          const finalContent = await extractTextFromPDF(pdf);
+
+          if (!finalContent.trim()) {
+            setError("PDF ফাইল থেকে কোনো টেক্সট বের করা যায়নি। ছবি-ভিত্তিক PDF সাপোর্ট করে না।");
+          } else {
+            setContent(finalContent);
+            pushToHistory(finalContent);
+            if (editorRef.current) editorRef.current.innerHTML = finalContent;
+          }
+        } catch (pdfErr) {
+          console.error("PDF import error:", pdfErr);
+
+          // Fallback: try with worker disabled
+          try {
+            const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({
+              data: new Uint8Array(arrayBuffer),
+              disableWorker: true,
+              useWorkerFetch: false,
+              isEvalSupported: false,
+              useSystemFonts: true,
+            });
+
+            const pdf = await loadingTask.promise;
+            const finalContent = await extractTextFromPDF(pdf);
+
+            if (!finalContent.trim()) {
+              setError("PDF ফাইল থেকে কোনো টেক্সট বের করা যায়নি। ছবি-ভিত্তিক PDF সাপোর্ট করে না।");
+            } else {
+              setContent(finalContent);
+              pushToHistory(finalContent);
+              if (editorRef.current) editorRef.current.innerHTML = finalContent;
+            }
+          } catch (fallbackErr) {
+            console.error("PDF fallback error:", fallbackErr);
+            throw new Error("PDF ইনপোর্টে সমস্যা হয়েছে। দয়া করে ফাইলটি .docx বা .txt ফরম্যাটে রূপান্তর করে আবার চেষ্টা করুন।");
+          }
         }
       }
       // Markdown import
@@ -640,21 +981,50 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     }
   };
 
+  const triggerFileDownload = (blobContent, mimeType, filename) => {
+    const blob = new Blob([blobContent], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleExportHTML = () => {
     if (!content.trim()) {
       alert("কন্টেন্ট খালি থাকলে এক্সপোর্ট করা যাবে না।");
       return;
     }
-
-    const blob = new Blob([content], { type: "text/html;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
+    const fullHtml = `<!DOCTYPE html>\n<html lang="bn">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>${title || "Article"}</title>\n<style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;line-height:1.8;color:#1a1a2e}h1,h2,h3{color:#0d7a3e}blockquote{border-left:4px solid #0d7a3e;padding:8px 16px;margin:16px 0;background:#f9f9f9}img{max-width:100%;height:auto}</style>\n</head>\n<body>\n<h1>${title || ""}</h1>\n${content}\n</body>\n</html>`;
     const filename = slug ? `${slug}.html` : `article-${Date.now()}.html`;
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    triggerFileDownload(fullHtml, "text/html;charset=utf-8;", filename);
+    setShowExportDropdown(false);
+  };
+
+  const handleExportMd = () => {
+    if (!content.trim()) {
+      alert("কন্টেন্ট খালি থাকলে এক্সপোর্ট করা যাবে না।");
+      return;
+    }
+    const md = `# ${title || "Article"}\n\n${htmlToMd(content)}`;
+    const filename = slug ? `${slug}.md` : `article-${Date.now()}.md`;
+    triggerFileDownload(md, "text/markdown;charset=utf-8;", filename);
+    setShowExportDropdown(false);
+  };
+
+  const handleExportTxt = () => {
+    if (!content.trim()) {
+      alert("কন্টেন্ট খালি থাকলে এক্সপোর্ট করা যাবে না।");
+      return;
+    }
+    const plainText = content.replace(/<\/?[^>]+(>|$)/g, " ").replace(/\s+/g, " ").trim();
+    const txt = `${title || "Article"}\n${"-".repeat(40)}\n\n${plainText}`;
+    const filename = slug ? `${slug}.txt` : `article-${Date.now()}.txt`;
+    triggerFileDownload(txt, "text/plain;charset=utf-8;", filename);
+    setShowExportDropdown(false);
   };
 
   // Detect block style when selection changes in the editor
@@ -839,7 +1209,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
               </span>
             </div>
 
-            {coverImage ? (
+            {coverImage && (
               <div style={{ marginBottom: "24px", borderRadius: "12px", overflow: "hidden", maxHeight: "400px" }}>
                 <img
                   src={coverImage}
@@ -851,11 +1221,6 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                     maxHeight: "400px",
                   }}
                 />
-              </div>
-            ) : (
-              <div className="preview-cover-placeholder">
-                <i className="fas fa-image" />
-                <span>কোন কভার ছবি আপলোড করা হয়নি</span>
               </div>
             )}
 
@@ -1412,13 +1777,98 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                   <>Import</>
                 )}
               </button>
-              <button
-                type="button"
-                className="footer-btn footer-btn-green"
-                onClick={handleExportHTML}
-              >
-                Export
-              </button>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="footer-btn footer-btn-green"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowExportDropdown((prev) => !prev);
+                  }}
+                >
+                  Export <i className="fas fa-chevron-up" style={{ fontSize: "9px", marginLeft: "4px" }} />
+                </button>
+                {showExportDropdown && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "100%",
+                      right: 0,
+                      marginBottom: "4px",
+                      background: "#fff",
+                      border: "1px solid #e4e6eb",
+                      borderRadius: "8px",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                      minWidth: "160px",
+                      zIndex: 100,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "10px 16px",
+                        border: "none",
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        color: "#333",
+                      }}
+                      onMouseOver={(e) => e.target.style.background = "#f0faf5"}
+                      onMouseOut={(e) => e.target.style.background = "transparent"}
+                      onClick={handleExportHTML}
+                    >
+                      <i className="fas fa-code" style={{ marginRight: "8px", color: "#0d7a3e" }} />
+                      HTML ফাইল (.html)
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "10px 16px",
+                        border: "none",
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        color: "#333",
+                        borderTop: "1px solid #f0f0f0",
+                      }}
+                      onMouseOver={(e) => e.target.style.background = "#f0faf5"}
+                      onMouseOut={(e) => e.target.style.background = "transparent"}
+                      onClick={handleExportMd}
+                    >
+                      <i className="fas fa-hashtag" style={{ marginRight: "8px", color: "#0d7a3e" }} />
+                      Markdown (.md)
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "10px 16px",
+                        border: "none",
+                        background: "transparent",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        color: "#333",
+                        borderTop: "1px solid #f0f0f0",
+                      }}
+                      onMouseOver={(e) => e.target.style.background = "#f0faf5"}
+                      onMouseOut={(e) => e.target.style.background = "transparent"}
+                      onClick={handleExportTxt}
+                    >
+                      <i className="fas fa-file-alt" style={{ marginRight: "8px", color: "#0d7a3e" }} />
+                      Plain Text (.txt)
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1426,7 +1876,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             type="file"
             ref={fileInputRef}
             style={{ display: "none" }}
-            accept=".docx,.pdf,.txt,.md,.html,.htm"
+            accept=".doc,.docx,.pdf,.txt,.md,.html,.htm"
             onChange={handleImportFile}
           />
         </div>
@@ -1479,10 +1929,10 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
           </button>
           <button
             className="btn btn-primary btn-compact"
-            onClick={() => handleSave("published")}
+            onClick={() => handleSave(article?.status || "draft")}
             disabled={saving}
           >
-            <i className="fas fa-globe" /> প্রকাশ করুন
+            <i className="fas fa-save" /> সংরক্ষণ করুন
           </button>
         </div>
       </div>
@@ -1613,6 +2063,49 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                 </button>
                 <button type="button" className="btn btn-primary btn-compact" onClick={() => setIsMdOutOpen(false)}>
                   বন্ধ করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Link Modal */}
+      {isLinkModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "450px" }}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: "1.2rem", margin: 0, color: "var(--primary-dark)" }}>লিংক যোগ করুন</h2>
+              <button className="close-btn" onClick={() => setIsLinkModalOpen(false)} style={{ background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer" }}>&times;</button>
+            </div>
+            <div style={{ marginTop: "15px" }}>
+              <div className="form-group" style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "6px", fontSize: "13px", fontWeight: "600", color: "#333" }}>লিংক ইউআরএল (URL)</label>
+                <input
+                  type="text"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleConfirmLink();
+                    }
+                  }}
+                  style={{ width: "100%", padding: "10px 12px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "14px" }}
+                />
+              </div>
+              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+                <button type="button" className="btn btn-secondary btn-compact" onClick={() => setIsLinkModalOpen(false)}>
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-compact"
+                  onClick={handleConfirmLink}
+                >
+                  যোগ করুন
                 </button>
               </div>
             </div>
