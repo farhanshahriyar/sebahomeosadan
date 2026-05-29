@@ -42,10 +42,12 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [mdText, setMdText] = useState("");
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const historyIndexRef = useRef(0);
+  const historyRef = useRef([article?.content || ""]);
   const editorRef = useRef(null);
   const isInternalUpdate = useRef(false);
 
@@ -67,7 +69,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   // Initialize subject and topic dropdown values when categories are loaded or when editing
   useEffect(() => {
     if (categories.length > 0) {
-      const currentCatId = article?.category_id || categoryId;
+      const currentCatId = article?.category_id;
       if (currentCatId) {
         const cat = categories.find((c) => c.id === currentCatId);
         if (cat) {
@@ -144,7 +146,9 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
       }
       
       // Auto-select the newly created suggested topic
-      setSelectedTopicId(res.data.id);
+      if (res?.data?.id) {
+        setSelectedTopicId(res.data.id);
+      }
       
       // Reset suggest form
       setSuggestedTopicName("");
@@ -220,6 +224,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
       const updated = [...nextHistory, newVal];
       const newIndex = updated.length - 1;
       historyIndexRef.current = newIndex;
+      historyRef.current = updated;
       setHistoryIndex(newIndex);
       return updated;
     });
@@ -285,12 +290,12 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     }
   };
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     if (historyIndexRef.current > 0) {
       const nextIndex = historyIndexRef.current - 1;
       historyIndexRef.current = nextIndex;
       setHistoryIndex(nextIndex);
-      const restoredContent = history[nextIndex];
+      const restoredContent = historyRef.current[nextIndex];
       setContent(restoredContent);
       if (editorRef.current) {
         editorRef.current.innerHTML = restoredContent;
@@ -299,14 +304,14 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         if (editorRef.current) editorRef.current.focus();
       }, 0);
     }
-  };
+  }, []);
 
-  const handleRedo = () => {
-    if (historyIndexRef.current < history.length - 1) {
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
       const nextIndex = historyIndexRef.current + 1;
       historyIndexRef.current = nextIndex;
       setHistoryIndex(nextIndex);
-      const restoredContent = history[nextIndex];
+      const restoredContent = historyRef.current[nextIndex];
       setContent(restoredContent);
       if (editorRef.current) {
         editorRef.current.innerHTML = restoredContent;
@@ -315,7 +320,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         if (editorRef.current) editorRef.current.focus();
       }, 0);
     }
-  };
+  }, []);
 
   // Detect current block format for the dropdown label
   const detectActiveBlock = useCallback(() => {
@@ -407,7 +412,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const getWordAndCharCount = () => {
     const cleanText = content.replace(/<\/?[^>]+(>|$)/g, " ").replace(/\s+/g, " ").trim();
     const words = cleanText ? cleanText.split(/\s+/).length : 0;
-    const chars = content.length;
+    const chars = cleanText.length;
     return { words, chars };
   };
 
@@ -512,22 +517,127 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     return md.trim();
   };
 
-  const handleImportFile = (e) => {
+  const handleImportFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      let finalContent = text;
-      if (file.name.endsWith(".md")) {
-        finalContent = mdToHtml(text);
+    const fileName = file.name.toLowerCase();
+    setImporting(true);
+    setError(null);
+
+    try {
+      // DOCX import via mammoth
+      if (fileName.endsWith(".docx")) {
+        const mammoth = await import("mammoth");
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const finalContent = result.value || "";
+        if (result.messages?.length) {
+          console.warn("Mammoth warnings:", result.messages);
+        }
+        setContent(finalContent);
+        pushToHistory(finalContent);
+        if (editorRef.current) editorRef.current.innerHTML = finalContent;
       }
-      setContent(finalContent);
-      pushToHistory(finalContent);
-    };
-    reader.readAsText(file);
-    e.target.value = "";
+      // PDF import via pdfjs-dist
+      else if (fileName.endsWith(".pdf")) {
+        const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const totalPages = pdf.numPages;
+        const allParagraphs = [];
+
+        for (let i = 1; i <= totalPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          
+          // Group text items into lines based on Y position
+          const lines = [];
+          let currentLine = [];
+          let lastY = null;
+
+          for (const item of textContent.items) {
+            if (item.str.trim() === "") continue;
+            const y = Math.round(item.transform[5]);
+            if (lastY !== null && Math.abs(y - lastY) > 3) {
+              // New line detected
+              if (currentLine.length > 0) {
+                lines.push(currentLine.join(" "));
+              }
+              currentLine = [item.str];
+            } else {
+              currentLine.push(item.str);
+            }
+            lastY = y;
+          }
+          if (currentLine.length > 0) {
+            lines.push(currentLine.join(" "));
+          }
+
+          // Group consecutive lines into paragraphs (blank-line separated)
+          let currentParagraph = [];
+          for (const line of lines) {
+            if (line.trim() === "") {
+              if (currentParagraph.length > 0) {
+                allParagraphs.push(`<p>${currentParagraph.join(" ")}</p>`);
+                currentParagraph = [];
+              }
+            } else {
+              currentParagraph.push(line.trim());
+            }
+          }
+          if (currentParagraph.length > 0) {
+            allParagraphs.push(`<p>${currentParagraph.join(" ")}</p>`);
+          }
+        }
+
+        const finalContent = allParagraphs.join("\n");
+        if (!finalContent.trim()) {
+          setError("PDF ফাইল থেকে কোনো টেক্সট বের করা যায়নি। ছবি-ভিত্তিক PDF সাপোর্ট করে না।");
+        } else {
+          setContent(finalContent);
+          pushToHistory(finalContent);
+          if (editorRef.current) editorRef.current.innerHTML = finalContent;
+        }
+      }
+      // Markdown import
+      else if (fileName.endsWith(".md")) {
+        const text = await file.text();
+        const finalContent = mdToHtml(text);
+        setContent(finalContent);
+        pushToHistory(finalContent);
+        if (editorRef.current) editorRef.current.innerHTML = finalContent;
+      }
+      // Plain text (.txt)
+      else if (fileName.endsWith(".txt")) {
+        const text = await file.text();
+        // Convert plain text lines into paragraphs
+        const paragraphs = text.split(/\n\s*\n/).filter(Boolean);
+        const finalContent = paragraphs.map(p => `<p>${p.replace(/\n/g, "<br/>")}</p>`).join("\n");
+        setContent(finalContent);
+        pushToHistory(finalContent);
+        if (editorRef.current) editorRef.current.innerHTML = finalContent;
+      }
+      // HTML import
+      else if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
+        const text = await file.text();
+        setContent(text);
+        pushToHistory(text);
+        if (editorRef.current) editorRef.current.innerHTML = text;
+      }
+      // Unsupported format
+      else {
+        setError("এই ফাইল ফরম্যাট সাপোর্ট করে না। .docx, .pdf, .txt, .md, বা .html ফাইল ব্যবহার করুন।");
+      }
+    } catch (err) {
+      console.error("Import error:", err);
+      setError(`ফাইল ইনপোর্টে ত্রুটি: ${err.message || "অজানা সমস্যা"}`);
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
   };
 
   const handleExportHTML = () => {
@@ -1293,8 +1403,14 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                 type="button"
                 className="footer-btn"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                style={importing ? { opacity: 0.7, cursor: "wait" } : {}}
               >
-                Import
+                {importing ? (
+                  <><i className="fas fa-spinner fa-spin" style={{ marginRight: "5px" }} /> ইনপোর্ট হচ্ছে...</>
+                ) : (
+                  <>Import</>
+                )}
               </button>
               <button
                 type="button"
@@ -1310,7 +1426,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             type="file"
             ref={fileInputRef}
             style={{ display: "none" }}
-            accept=".txt,.md,.html"
+            accept=".docx,.pdf,.txt,.md,.html,.htm"
             onChange={handleImportFile}
           />
         </div>
