@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import ArticleEditor from "@/components/dashboard/ArticleEditor";
+import { revalidatePost } from "./actions";
 
 export default function PostsPage() {
   const [articles, setArticles] = useState([]);
@@ -110,17 +111,30 @@ export default function PostsPage() {
   };
 
   const handleDelete = async (id) => {
+    // Fetch the slug of the deleted article to revalidate it
+    const { data: article } = await supabase
+      .from("articles")
+      .select("slug")
+      .eq("id", id)
+      .single();
+
     const { error } = await supabase.from("articles").delete().eq("id", id);
     if (!error) {
       setDeleteConfirm(null);
       fetchArticles();
+      if (article?.slug) {
+        await revalidatePost(article.slug);
+      }
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async (savedArticle) => {
     setShowEditor(false);
     setEditingArticle(null);
     fetchArticles();
+    if (savedArticle?.slug) {
+      await revalidatePost(savedArticle.slug);
+    }
   };
 
   const formatDate = (dateStr) => {

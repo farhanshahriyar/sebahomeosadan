@@ -26,10 +26,7 @@ CREATE POLICY "Users can view own profile"
 CREATE POLICY "Admins can view all profiles"
   ON public.profiles FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
-    )
+    (auth.jwt() -> 'user_metadata' ->> 'role') IN ('admin', 'super_admin')
   );
 
 -- Allow users to update their own profile (but not their role)
@@ -42,10 +39,7 @@ CREATE POLICY "Users can update own profile"
 CREATE POLICY "Super admins can update all profiles"
   ON public.profiles FOR UPDATE
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND role = 'super_admin'
-    )
+    (auth.jwt() -> 'user_metadata' ->> 'role') = 'super_admin'
   );
 
 -- Allow inserts (for the trigger and setup)

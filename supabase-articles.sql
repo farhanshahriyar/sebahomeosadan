@@ -108,6 +108,14 @@ CREATE POLICY "Authors can insert articles"
   ON public.articles FOR INSERT
   WITH CHECK (auth.uid() = author_id);
 
+-- Admins can insert any article
+CREATE POLICY "Admins can insert any article"
+  ON public.articles FOR INSERT
+  WITH CHECK (
+    (auth.jwt() -> 'user_metadata' ->> 'role') IN ('admin', 'super_admin')
+  );
+
+
 -- Authors can update their own articles
 CREATE POLICY "Authors can update own articles"
   ON public.articles FOR UPDATE

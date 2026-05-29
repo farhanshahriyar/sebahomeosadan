@@ -296,6 +296,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
   const [importing, setImporting] = useState(false);
+  const [userRole, setUserRole] = useState("author");
 
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -427,11 +428,16 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
       } = await supabase.auth.getUser();
 
       if (user) {
-        const { data: profile } = await supabase
+        const { data: profiles } = await supabase
           .from("profiles")
-          .select("full_name")
-          .eq("id", user.id)
-          .single();
+          .select("full_name, role")
+          .eq("id", user.id);
+
+        const profile = profiles?.[0];
+
+        if (profile?.role) {
+          setUserRole(profile.role);
+        }
 
         if (profile?.full_name) {
           setAuthorName(profile.full_name);
@@ -1045,12 +1051,23 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
 
   const handleSave = useCallback(
     async (status) => {
+      // Always sync content from the editor DOM before saving
+      let finalContent = content;
+      if (isSourceMode) {
+        finalContent = sourceHtml;
+      } else if (editorRef.current) {
+        const html = editorRef.current.innerHTML;
+        finalContent = html === "<br>" || html === "<div><br></div>" ? "" : html;
+      }
+
       if (!title.trim()) {
         setError("শিরোনাম আবশ্যক");
+        document.querySelector(".article-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
-      if (!content.trim()) {
+      if (!finalContent.trim()) {
         setError("কন্টেন্ট আবশ্যক");
+        document.querySelector(".article-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
 
@@ -1061,36 +1078,44 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         const supabase = createClient();
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
+        if (authError) {
+          console.error("[ArticleEditor] Auth error:", authError);
+        }
+
         if (!user) {
-          setError("আপনি লগইন করেননি");
+          setError("আপনি লগইন করেননি। দয়া করে পেজটি রিফ্রেশ করে আবার লগইন করুন।");
           setSaving(false);
+          document.querySelector(".article-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
           return;
         }
 
         // Fetch author name from profile
-        const { data: profile } = await supabase
+        const { data: profiles } = await supabase
           .from("profiles")
           .select("full_name")
-          .eq("id", user.id)
-          .single();
+          .eq("id", user.id);
+        const profile = profiles?.[0];
+
+        let articleSlug = slug.trim() || generateSlug(title);
 
         const articleData = {
           title: title.trim(),
-          slug: slug.trim() || generateSlug(title),
+          slug: articleSlug,
           category_id: categoryId || null,
           excerpt: excerpt.trim() || title.trim().substring(0, 160),
-          content: content.trim(),
+          content: finalContent.trim(),
           cover_image: coverImage.trim() || null,
           tags: tags
             .split(",")
             .map((t) => t.trim())
             .filter(Boolean),
           status,
-          author_id: user.id,
+          author_id: article?.author_id || user.id,
           author_name:
-            authorName || profile?.full_name || user.email?.split("@")[0] || "Unknown",
+            article?.author_name || authorName || profile?.full_name || user.email?.split("@")[0] || "Unknown",
           ...(status === "published" && !article?.published_at
             ? { published_at: new Date().toISOString() }
             : {}),
@@ -1103,32 +1128,55 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             .from("articles")
             .update(articleData)
             .eq("id", article.id)
-            .select()
-            .single();
+            .select();
         } else {
           // Insert new
           result = await supabase
             .from("articles")
             .insert(articleData)
-            .select()
-            .single();
+            .select();
+
+          // Handle duplicate slug conflict: retry with a unique suffix
+          if (result.error && (result.error.code === "23505" || result.error.message?.includes("duplicate") || result.error.message?.includes("unique"))) {
+            console.warn("[ArticleEditor] Slug conflict detected, retrying with unique suffix...");
+            articleData.slug = `${articleSlug}-${Date.now().toString(36)}`;
+            result = await supabase
+              .from("articles")
+              .insert(articleData)
+              .select();
+          }
         }
 
         if (result.error) {
+          console.error("[ArticleEditor] Supabase error:", result.error);
           if (result.error.message?.includes("articles_category_id_fkey")) {
-            throw new Error("নির্বাচিত বিভাগটি ডাটাবেসে পাওয়া যায়নি। দয়া করে পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।");
+            throw new Error("নির্বাচিত বিভাগটি ডাটাবেসে পাওয়া যায়নি। দয়া করে পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।");
           }
-          throw result.error;
+          if (result.error.code === "23505") {
+            throw new Error("এই স্লাগ/URL ইতিমধ্যে বিদ্যমান আছে। দয়া করে স্লাগটি পরিবর্তন করে আবার চেষ্টা করুন।");
+          }
+          if (result.error.code === "42501" || result.error.message?.includes("policy")) {
+            throw new Error("আপনার এই কাজটি করার অনুমতি নেই। দয়া করে পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।");
+          }
+          throw new Error(result.error.message || "সংরক্ষণে ত্রুটি হয়েছে");
         }
 
-        onSave?.(result.data);
+        const savedArticle = result.data?.[0];
+        if (!savedArticle) {
+          console.error("[ArticleEditor] Save returned empty data. RLS may be blocking. Result:", JSON.stringify(result));
+          throw new Error("সংরক্ষণ করতে ব্যর্থ হয়েছে। সম্ভবত আপনার এই লেখাটি পরিবর্তন করার অনুমতি নেই বা সেশন এক্সপায়ার হয়েছে। পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।");
+        }
+
+        onSave?.(savedArticle);
       } catch (err) {
+        console.error("[ArticleEditor] Save failed:", err);
         setError(err.message || "সংরক্ষণে ত্রুটি হয়েছে");
+        document.querySelector(".article-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
       } finally {
         setSaving(false);
       }
     },
-    [title, slug, categoryId, excerpt, content, coverImage, tags, article, onSave, authorName]
+    [title, slug, categoryId, excerpt, content, coverImage, tags, article, onSave, authorName, isSourceMode, sourceHtml]
   );
 
   return (
@@ -1927,13 +1975,27 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
           >
             <i className="fas fa-paper-plane" /> রিভিউতে পাঠান
           </button>
-          <button
-            className="btn btn-primary btn-compact"
-            onClick={() => handleSave(article?.status || "draft")}
-            disabled={saving}
-          >
-            <i className="fas fa-save" /> সংরক্ষণ করুন
-          </button>
+          {(userRole === "admin" || userRole === "super_admin") ? (
+            <button
+              className="btn btn-primary btn-compact"
+              onClick={() => handleSave("published")}
+              disabled={saving}
+            >
+              <i className="fas fa-globe" /> প্রকাশ করুন
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary btn-compact"
+              onClick={() => {
+                // Authors can't save as "published", so demote "published" to "draft"
+                const targetStatus = article?.status === "published" ? "draft" : (article?.status || "draft");
+                handleSave(targetStatus);
+              }}
+              disabled={saving}
+            >
+              <i className="fas fa-save" /> সংরক্ষণ করুন
+            </button>
+          )}
         </div>
       </div>
       )}

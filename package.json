@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "inspect-db": "node C:/Users/AbirPC/.gemini/antigravity-ide/scratch/inspect_db.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

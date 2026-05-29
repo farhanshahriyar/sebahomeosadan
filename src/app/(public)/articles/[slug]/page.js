@@ -5,12 +5,16 @@ import Sidebar from "@/components/Sidebar";
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
+  console.log("[generateMetadata] raw slug:", slug);
+  const decodedSlug = decodeURIComponent(slug);
+  console.log("[generateMetadata] decoded slug:", decodedSlug);
   const { data: article } = await supabase
     .from("articles")
     .select("title, excerpt, categories(name)")
-    .eq("slug", slug)
+    .or(`slug.eq.${slug},slug.eq.${decodedSlug}`)
     .eq("status", "published")
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (!article) {
     return { title: "পোস্ট পাওয়া যায়নি | Good Health Homeo Care" };
@@ -49,14 +53,20 @@ export default async function ArticlePage({ params }) {
   const supabase = await createClient();
 
   // Fetch the article
+  console.log("[ArticlePage] raw slug:", slug);
+  const decodedSlug = decodeURIComponent(slug);
+  console.log("[ArticlePage] decoded slug:", decodedSlug);
+
   const { data: article, error } = await supabase
     .from("articles")
     .select("*, categories(name)")
-    .eq("slug", slug)
+    .or(`slug.eq.${slug},slug.eq.${decodedSlug}`)
     .eq("status", "published")
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error || !article) {
+    console.error("[ArticlePage] Fetch error:", error, "Article:", article);
     notFound();
   }
 
