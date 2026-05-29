@@ -141,7 +141,6 @@ export default async function ArticlePage({ params }) {
             </div>
           )}
 
-          {/* Post Navigation */}
           <div className="post-navigation">
             <div>
               {prevArticle && (
@@ -150,23 +149,25 @@ export default async function ArticlePage({ params }) {
                 </a>
               )}
             </div>
-            <div className="post-share">
-              <i className="fa fa-share-alt" />
-              <a
-                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-                  `https://goodhealthhomeocare.com/articles/${article.slug}`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Facebook
-              </a>
-            </div>
-            <div>
-              {nextArticle && (
-                <a href={`/articles/${nextArticle.slug}`}>
-                  {nextArticle.title} <i className="fas fa-arrow-right" />
+            <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
+              <div className="post-share">
+                <i className="fa fa-share-alt" />
+                <a
+                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                    `https://goodhealthhomeocare.com/articles/${article.slug}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Facebook
                 </a>
+              </div>
+              {nextArticle && (
+                <div>
+                  <a href={`/articles/${nextArticle.slug}`}>
+                    {nextArticle.title} <i className="fas fa-arrow-right" />
+                  </a>
+                </div>
               )}
             </div>
           </div>
