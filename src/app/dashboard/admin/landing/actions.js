@@ -3,8 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-// Verify if user is admin or super_admin
-async function checkAdminRole(supabase) {
+// Verify if user is super_admin
+async function checkSuperAdminRole(supabase) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
@@ -14,14 +14,14 @@ async function checkAdminRole(supabase) {
     .eq("id", user.id)
     .single();
 
-  return profile?.role === "admin" || profile?.role === "super_admin";
+  return profile?.role === "super_admin";
 }
 
 export async function saveLandingSettingsAction(formData) {
   const supabase = await createClient();
-  const isAdmin = await checkAdminRole(supabase);
+  const isSuperAdmin = await checkSuperAdminRole(supabase);
 
-  if (!isAdmin) {
+  if (!isSuperAdmin) {
     return { error: "এই অ্যাকশনটি সম্পন্ন করার ক্ষমতা আপনার নেই (Access Denied)।" };
   }
 

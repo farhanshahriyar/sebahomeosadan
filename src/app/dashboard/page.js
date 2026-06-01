@@ -55,8 +55,14 @@ export default async function DashboardOverview() {
     console.error("Error fetching recent articles:", recentError);
   }
 
-  // Static medicines list count matches the 17 listed in public medicines list
-  const medicinesCount = 17;
+  // Fetch medicines count dynamically from database
+  const { count: medicinesCount, error: medicinesError } = await supabase
+    .from("medicines")
+    .select("*", { count: "exact", head: true });
+
+  if (medicinesError) {
+    console.error("Error fetching medicines count:", medicinesError);
+  }
 
   // Status mapping
   const statusLabel = {
@@ -95,7 +101,7 @@ export default async function DashboardOverview() {
             <i className="fas fa-pills"></i>
           </div>
           <div className="stat-info">
-            <h3>{medicinesCount}</h3>
+            <h3>{medicinesCount || 0}</h3>
             <p>Medicines Listed</p>
           </div>
         </div>

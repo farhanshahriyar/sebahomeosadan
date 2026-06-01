@@ -4,16 +4,35 @@ import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 
 export async function createUserAction(formData) {
-  const email = formData.get("email");
-  const password = formData.get("password");
-  const fullName = formData.get("full_name");
-  const role = formData.get("role");
-
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
   if (!serviceRoleKey) {
     return { error: "Missing SUPABASE_SERVICE_ROLE_KEY in .env file. You need to add this key from your Supabase Project Settings > API to allow creating users from the admin panel." };
   }
+
+  // Verify the calling user's role using cookie-based auth
+  const { createClient: createAuthClient } = await import("@/lib/supabase/server");
+  const supabaseAuth = await createAuthClient();
+  const { data: { user: callingUser } } = await supabaseAuth.auth.getUser();
+
+  if (!callingUser) {
+    return { error: "Access Denied: You must be logged in." };
+  }
+
+  const { data: callerProfile } = await supabaseAuth
+    .from("profiles")
+    .select("role")
+    .eq("id", callingUser.id)
+    .single();
+
+  if (callerProfile?.role !== "super_admin") {
+    return { error: "Access Denied: Only Super Admins can create new users." };
+  }
+
+  const email = formData.get("email");
+  const password = formData.get("password");
+  const fullName = formData.get("full_name");
+  const role = formData.get("role");
 
   // Use the service role key to bypass RLS and create the user without logging out the current admin
   const supabaseAdmin = createClient(

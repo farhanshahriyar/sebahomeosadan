@@ -14,6 +14,25 @@ function getAdminClient() {
 }
 
 export async function fetchSystemStatus() {
+  // Verify the calling user is super_admin
+  const { createClient: createAuthClient } = await import("@/lib/supabase/server");
+  const supabaseAuth = await createAuthClient();
+  const { data: { user: callingUser } } = await supabaseAuth.auth.getUser();
+
+  if (!callingUser) {
+    return { error: "Access Denied: You must be logged in." };
+  }
+
+  const { data: callerProfile } = await supabaseAuth
+    .from("profiles")
+    .select("role")
+    .eq("id", callingUser.id)
+    .single();
+
+  if (callerProfile?.role !== "super_admin") {
+    return { error: "Access Denied: Only Super Admins can fetch system status." };
+  }
+
   const supabase = getAdminClient();
   if (!supabase) {
     return { error: "Missing SUPABASE_SERVICE_ROLE_KEY" };

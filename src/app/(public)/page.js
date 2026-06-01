@@ -10,8 +10,8 @@ export const metadata = {
 export default async function HomePage() {
   const supabase = await createClient();
 
-  // Fetch the latest 3 published articles and landing page settings in parallel
-  const [articlesRes, settingsRes] = await Promise.all([
+  // Fetch the latest 3 published articles, landing page settings, and testimonials in parallel
+  const [articlesRes, settingsRes, testimonialsRes] = await Promise.all([
     supabase
       .from("articles")
       .select("*, categories(name)")
@@ -22,11 +22,16 @@ export default async function HomePage() {
       .from("landing_settings")
       .select("*")
       .eq("id", 1)
-      .maybeSingle()
+      .maybeSingle(),
+    supabase
+      .from("testimonials")
+      .select("*")
+      .order("display_order", { ascending: true })
   ]);
 
   const articles = articlesRes.data;
   const landingSettings = settingsRes.data;
+  const testimonials = testimonialsRes?.data || [];
 
   if (articlesRes.error) {
     console.error("Error fetching homepage articles:", articlesRes.error);
@@ -171,7 +176,7 @@ export default async function HomePage() {
       </section>
 
       {/* Testimonials Section */}
-      <Testimonials />
+      <Testimonials initialTestimonials={testimonials} />
     </>
   );
 }

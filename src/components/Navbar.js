@@ -31,6 +31,9 @@ export default function Navbar({ categories = [] }) {
   return (
     <nav className="navbar" id="main-navbar">
       <div className="container" style={{ justifyContent: "center" }}>
+        <Link href="/" className="nav-brand mobile-brand">
+          <i className="fas fa-leaf" /> সেবা হোমিওসদন
+        </Link>
         <button
           className="nav-toggle"
           onClick={() => setMenuOpen(!menuOpen)}

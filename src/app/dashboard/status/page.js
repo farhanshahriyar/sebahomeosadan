@@ -22,7 +22,7 @@ export default async function StatusPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "admin" && profile?.role !== "super_admin") {
+  if (profile?.role !== "super_admin") {
     redirect("/dashboard");
   }
 

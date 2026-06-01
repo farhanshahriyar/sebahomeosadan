@@ -44,7 +44,7 @@ export default function LandingAdminPage() {
         .eq("id", user.id)
         .single();
 
-      if (profile?.role !== "admin" && profile?.role !== "super_admin") {
+      if (profile?.role !== "super_admin") {
         window.location.href = "/dashboard";
         return;
       }

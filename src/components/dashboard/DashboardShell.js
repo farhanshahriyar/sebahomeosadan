@@ -17,8 +17,14 @@ export default function DashboardShell({ userInfo, children }) {
         ? "Admin"
         : "Author";
 
-  // If user is admin, they can toggle their view mode
-  const [viewMode, setViewMode] = useState(isAdmin ? "admin" : "author");
+  // If user is admin/super-admin, they can toggle their view mode
+  const [viewMode, setViewMode] = useState(
+    userInfo.role === "super_admin"
+      ? "super_admin"
+      : userInfo.role === "admin"
+        ? "admin"
+        : "author"
+  );
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
   const viewDropdownRef = useRef(null);
 
@@ -92,7 +98,7 @@ export default function DashboardShell({ userInfo, children }) {
   const handleSearchChange = (e) => {
     const val = e.target.value;
     setSearchValue(val);
-    
+
     // Broadcast search value to client pages
     window.dispatchEvent(new CustomEvent("dashboard-search", { detail: val }));
 
@@ -105,7 +111,7 @@ export default function DashboardShell({ userInfo, children }) {
       "/dashboard/admin/categories",
       "/dashboard/admin/topics"
     ];
-    
+
     const isSearchable = searchablePaths.some(path => {
       const cleanPath = path.replace(/\/$/, "");
       return cleanPathname === cleanPath || cleanPathname.startsWith(cleanPath + "/");
@@ -380,13 +386,25 @@ export default function DashboardShell({ userInfo, children }) {
     return `${diffDays} দিন আগে`;
   };
 
-  // Determine if admin features should be visible
-  const showAdminFeatures = isAdmin && viewMode === "admin";
+  // Determine if admin/super_admin features should be visible
+  const showAdminFeatures = isAdmin && (viewMode === "admin" || viewMode === "super_admin");
+  const showSuperAdminFeatures = userInfo.role === "super_admin" && viewMode === "super_admin";
 
-  const viewModes = [
-    { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
-    { key: "admin", label: "Admin", icon: "fas fa-shield-alt", description: "Full admin controls" },
-  ];
+  const viewModes =
+    userInfo.role === "super_admin"
+      ? [
+          { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
+          { key: "admin", label: "Admin", icon: "fas fa-user-shield", description: "Content & editorial controls" },
+          { key: "super_admin", label: "Super Admin", icon: "fas fa-shield-alt", description: "System & user controls" },
+        ]
+      : userInfo.role === "admin"
+        ? [
+            { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
+            { key: "admin", label: "Admin", icon: "fas fa-shield-alt", description: "Full admin controls" },
+          ]
+        : [
+            { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" }
+          ];
 
   const currentMode = viewModes.find((m) => m.key === viewMode) || viewModes[0];
 
@@ -405,7 +423,7 @@ export default function DashboardShell({ userInfo, children }) {
         <Link href="/dashboard" className="dashboard-brand">
           <i className="fas fa-leaf"></i> <span>Good Health Homeo Care</span>
         </Link>
-        
+
         {/* View Switcher Dropdown (Only for Admins) */}
         {isAdmin && (
           <div className="view-switcher-container" ref={viewDropdownRef}>
@@ -460,14 +478,16 @@ export default function DashboardShell({ userInfo, children }) {
           >
             <i className="fas fa-home"></i> <span>Overview</span>
           </Link>
+          {showSuperAdminFeatures && (
+            <Link
+              href="/dashboard/admin"
+              className={`dashboard-nav-item ${pathname === "/dashboard/admin" ? "active" : ""}`}
+            >
+              <i className="fas fa-users-cog"></i> <span>Manage Users</span>
+            </Link>
+          )}
           {showAdminFeatures && (
             <>
-              <Link
-                href="/dashboard/admin"
-                className={`dashboard-nav-item ${pathname === "/dashboard/admin" ? "active" : ""}`}
-              >
-                <i className="fas fa-users-cog"></i> <span>Manage Users</span>
-              </Link>
               <Link
                 href="/dashboard/admin/categories"
                 className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/categories") ? "active" : ""}`}
@@ -496,31 +516,39 @@ export default function DashboardShell({ userInfo, children }) {
           )}
 
           <div className="dashboard-nav-title"><span>Content</span></div>
-          <Link 
-            href="/dashboard/posts" 
+          <Link
+            href="/dashboard/posts"
             className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/posts") || pathname?.startsWith("/dashboard/author") ? "active" : ""}`}
           >
             <i className="fas fa-file-alt"></i> <span>Posts</span>
           </Link>
-          <Link href="/dashboard" className="dashboard-nav-item">
+          <Link
+            href="/dashboard/medicines"
+            className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/medicines") ? "active" : ""}`}
+          >
             <i className="fas fa-pills"></i> <span>Medicines</span>
           </Link>
-          <Link href="/dashboard" className="dashboard-nav-item">
-            <i className="fas fa-comments"></i> <span>Testimonials</span>
-          </Link>
-          {showAdminFeatures && (
-            <Link 
-              href="/dashboard/admin/landing" 
-              className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/landing") ? "active" : ""}`}
-            >
-              <i className="fas fa-desktop"></i> <span>Landing Page</span>
-            </Link>
+          {showSuperAdminFeatures && (
+            <>
+              <Link
+                href="/dashboard/admin/testimonials"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/testimonials") ? "active" : ""}`}
+              >
+                <i className="fas fa-comments"></i> <span>Testimonials</span>
+              </Link>
+              <Link
+                href="/dashboard/admin/landing"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/landing") ? "active" : ""}`}
+              >
+                <i className="fas fa-desktop"></i> <span>Landing Page</span>
+              </Link>
+            </>
           )}
 
           <div className="dashboard-nav-title"><span>Settings</span></div>
-          {showAdminFeatures && (
-            <Link 
-              href="/dashboard/status" 
+          {showSuperAdminFeatures && (
+            <Link
+              href="/dashboard/status"
               className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/status") ? "active" : ""}`}
             >
               <i className="fas fa-server"></i> <span>Status</span>
@@ -546,9 +574,9 @@ export default function DashboardShell({ userInfo, children }) {
         <header className="dashboard-topbar">
           <div className="topbar-search">
             <i className="fas fa-search"></i>
-            <input 
-              type="text" 
-              placeholder="Search dashboard..." 
+            <input
+              type="text"
+              placeholder="Search dashboard..."
               value={searchValue}
               onChange={handleSearchChange}
             />
@@ -556,7 +584,7 @@ export default function DashboardShell({ userInfo, children }) {
           <div className="topbar-actions">
             {/* Notifications Bell Dropdown */}
             <div className="notifications-container" ref={notificationsRef}>
-              <button 
+              <button
                 className="topbar-btn"
                 onClick={() => setNotificationsOpen((prev) => !prev)}
                 title="Notifications"
@@ -577,7 +605,7 @@ export default function DashboardShell({ userInfo, children }) {
                       </button>
                     )}
                   </div>
-                  
+
                   <div className="notifications-list">
                     {notifications.length === 0 ? (
                       <div className="notifications-empty">
@@ -594,7 +622,7 @@ export default function DashboardShell({ userInfo, children }) {
                             className={`notification-item ${isUnread ? "unread" : ""}`}
                             onClick={() => handleNotificationClick(notif.id)}
                           >
-                            <div 
+                            <div
                               className="notification-icon-wrapper"
                               style={{ backgroundColor: notif.color }}
                             >
@@ -616,10 +644,10 @@ export default function DashboardShell({ userInfo, children }) {
               )}
             </div>
 
-            {/* Messages Inbox Dropdown - Only for Admins */}
-            {isAdmin && (
+            {/* Messages Inbox Dropdown - Only for Admins in Admin/SuperAdmin View */}
+            {showAdminFeatures && (
               <div className="notifications-container" ref={messagesRef}>
-                <button 
+                <button
                   className="topbar-btn"
                   onClick={toggleMessagesDropdown}
                   title="Messages"
@@ -640,7 +668,7 @@ export default function DashboardShell({ userInfo, children }) {
                         </button>
                       )}
                     </div>
-                    
+
                     <div className="notifications-list">
                       {messages.length === 0 ? (
                         <div className="notifications-empty">
@@ -655,7 +683,7 @@ export default function DashboardShell({ userInfo, children }) {
                             onClick={() => handleMessageClick(msg)}
                             style={{ cursor: "pointer" }}
                           >
-                            <div 
+                            <div
                               className="notification-icon-wrapper"
                               style={{ backgroundColor: "#e67e22" }}
                             >
@@ -721,7 +749,7 @@ export default function DashboardShell({ userInfo, children }) {
                 &times;
               </button>
             </div>
-            
+
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "14px" }}>
               <div><strong>প্রেরক (From):</strong> {selectedMessage.name} ({selectedMessage.email})</div>
               <div><strong>বিষয় (Subject):</strong> {selectedMessage.subject}</div>
@@ -739,14 +767,14 @@ export default function DashboardShell({ userInfo, children }) {
               display: "flex", justifyContent: "flex-end", gap: "10px",
               marginTop: "25px", borderTop: "1px solid #eee", paddingTop: "15px"
             }}>
-              <button 
+              <button
                 className="btn btn-secondary btn-compact"
                 onClick={() => handleDeleteMessage(selectedMessage.id)}
                 style={{ background: "#e74c3c", color: "white", border: "none", cursor: "pointer" }}
               >
                 <i className="fas fa-trash"></i> মুছুন (Delete)
               </button>
-              <a 
+              <a
                 href={`mailto:${selectedMessage.email}?subject=RE: ${encodeURIComponent(selectedMessage.subject)}`}
                 className="btn btn-primary btn-compact"
                 style={{ textDecoration: "none" }}
