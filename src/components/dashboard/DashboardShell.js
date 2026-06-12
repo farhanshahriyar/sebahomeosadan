@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { updateOwnProfileAction, changeOwnPasswordAction } from "@/app/dashboard/admin/actions";
 
 export default function DashboardShell({ userInfo, children }) {
   const pathname = usePathname();
@@ -48,6 +49,93 @@ export default function DashboardShell({ userInfo, children }) {
 
   const supabase = createClient();
 
+  // Profile settings and password change states
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
+  const userDropdownRef = useRef(null);
+
+  // Profile fields state
+  const [displayName, setDisplayName] = useState(userInfo.name);
+  const [profileName, setProfileName] = useState(userInfo.name);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileErrorState] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState("");
+
+  // Password fields state
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+
+  useEffect(() => {
+    setDisplayName(userInfo.name);
+    setProfileName(userInfo.name);
+  }, [userInfo.name]);
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setProfileErrorState("");
+    setProfileSuccess("");
+    setProfileLoading(true);
+
+    try {
+      const res = await updateOwnProfileAction(profileName);
+      if (res.error) {
+        setProfileErrorState(res.error);
+      } else {
+        setProfileSuccess("প্রোফাইল সফলভাবে আপডেট করা হয়েছে!");
+        setDisplayName(profileName.trim());
+        router.refresh();
+        setTimeout(() => {
+          setProfileSettingsOpen(false);
+          setProfileSuccess("");
+        }, 1500);
+      }
+    } catch (err) {
+      setProfileErrorState("প্রোফাইল আপডেট করতে সমস্যা হয়েছে।");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError("পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে।");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("পাসওয়ার্ড দুটি মেলেনি।");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const res = await changeOwnPasswordAction(newPassword);
+      if (res.error) {
+        setPasswordError(res.error);
+      } else {
+        setPasswordSuccess("পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!");
+        setNewPassword("");
+        setConfirmPassword("");
+        setTimeout(() => {
+          setPasswordChangeOpen(false);
+          setPasswordSuccess("");
+        }, 1500);
+      }
+    } catch (err) {
+      setPasswordError("পাসওয়ার্ড পরিবর্তন করতে সমস্যা হয়েছে।");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setCollapsed(true);
@@ -72,10 +160,13 @@ export default function DashboardShell({ userInfo, children }) {
       if (messagesOpen && messagesRef.current && !messagesRef.current.contains(e.target)) {
         setMessagesOpen(false);
       }
+      if (userDropdownOpen && userDropdownRef.current && !userDropdownRef.current.contains(e.target)) {
+        setUserDropdownOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [viewDropdownOpen, notificationsOpen, messagesOpen]);
+  }, [viewDropdownOpen, notificationsOpen, messagesOpen, userDropdownOpen]);
 
   // Sync search value from URL query param if present
   useEffect(() => {
@@ -489,6 +580,12 @@ export default function DashboardShell({ userInfo, children }) {
           {showAdminFeatures && (
             <>
               <Link
+                href="/dashboard/admin/pages"
+                className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/pages") ? "active" : ""}`}
+              >
+                <i className="fas fa-copy"></i> <span>Manage Pages</span>
+              </Link>
+              <Link
                 href="/dashboard/admin/categories"
                 className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/admin/categories") ? "active" : ""}`}
               >
@@ -713,14 +810,58 @@ export default function DashboardShell({ userInfo, children }) {
               </div>
             )}
 
-            <div className="user-profile">
-              <div className="user-avatar-placeholder">
-                {userInfo.name.charAt(0).toUpperCase()}
+            <div className="profile-dropdown-container" ref={userDropdownRef}>
+              <div className="user-profile" onClick={() => setUserDropdownOpen(!userDropdownOpen)}>
+                <div className="user-avatar-placeholder">
+                  {userInfo.avatar ? (
+                    <img src={userInfo.avatar} alt={displayName} />
+                  ) : (
+                    displayName.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div className="user-profile-info">
+                  <span className="name">{displayName}</span>
+                  <span className="role">{roleBadge}</span>
+                </div>
+                <i className={`fas fa-chevron-${userDropdownOpen ? "up" : "down"} profile-chevron`} style={{ fontSize: "11px", color: "#888", marginLeft: "5px" }} />
               </div>
-              <div className="user-profile-info">
-                <span className="name">{userInfo.name}</span>
-                <span className="role">{roleBadge}</span>
-              </div>
+
+              {userDropdownOpen && (
+                <div className="profile-dropdown">
+                  <div className="profile-dropdown-header">
+                    <div className="profile-dropdown-avatar">
+                      {userInfo.avatar ? (
+                        <img src={userInfo.avatar} alt={displayName} />
+                      ) : (
+                        displayName.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div className="profile-dropdown-user-details">
+                      <span className="profile-dropdown-name">{displayName}</span>
+                      <span className="profile-dropdown-email">{userInfo.email}</span>
+                      <span className="profile-dropdown-role-badge">{roleBadge}</span>
+                    </div>
+                  </div>
+                  <div className="profile-dropdown-divider"></div>
+                  <div className="profile-dropdown-menu">
+                    <button className="profile-dropdown-item" onClick={() => { setProfileSettingsOpen(true); setUserDropdownOpen(false); }}>
+                      <i className="fas fa-user-cog"></i>
+                      <span>প্রোফাইল সেটিংস (Profile Settings)</span>
+                    </button>
+                    <button className="profile-dropdown-item" onClick={() => { setPasswordChangeOpen(true); setUserDropdownOpen(false); }}>
+                      <i className="fas fa-key"></i>
+                      <span>পাসওয়ার্ড পরিবর্তন (Change Password)</span>
+                    </button>
+                    <div className="profile-dropdown-divider"></div>
+                    <form action={logout}>
+                      <button type="submit" className="profile-dropdown-item logout">
+                        <i className="fas fa-sign-out-alt"></i>
+                        <span>লগআউট (Logout)</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -785,6 +926,193 @@ export default function DashboardShell({ userInfo, children }) {
                 <i className="fas fa-reply"></i> উত্তর দিন (Reply)
               </a>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Settings Modal Overlay */}
+      {profileSettingsOpen && (
+        <div className="modal-overlay" style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 11000
+        }}>
+          <div className="modal-content" style={{
+            background: "white", padding: "30px", borderRadius: "12px",
+            width: "100%", maxWidth: "450px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+            color: "#333", position: "relative"
+          }}>
+            <div className="modal-header" style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "15px"
+            }}>
+              <h2 style={{ margin: 0, fontSize: "1.3rem", color: "var(--primary-dark)" }}>প্রোফাইল সেটিংস (Profile Settings)</h2>
+              <button className="close-btn" style={{
+                background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer", color: "#666"
+              }} onClick={() => { setProfileSettingsOpen(false); setProfileErrorState(""); setProfileSuccess(""); }}>
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProfile}>
+              {profileError && (
+                <div className="modal-alert modal-alert-danger">
+                  <i className="fas fa-exclamation-circle"></i>
+                  <span>{profileError}</span>
+                </div>
+              )}
+              {profileSuccess && (
+                <div className="modal-alert modal-alert-success">
+                  <i className="fas fa-check-circle"></i>
+                  <span>{profileSuccess}</span>
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>পূর্ণ নাম (Full Name)</label>
+                  <input
+                    type="text"
+                    className="cfg-input"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    required
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #ddd" }}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>ইমেইল অ্যাড্রেস (Email Address)</label>
+                  <input
+                    type="email"
+                    className="cfg-input"
+                    value={userInfo.email}
+                    disabled
+                    style={{
+                      width: "100%", padding: "10px 12px", borderRadius: "8px",
+                      border: "1px solid #ddd", background: "#f5f5f5", cursor: "not-allowed"
+                    }}
+                  />
+                  <span style={{ fontSize: "11px", color: "#888", marginTop: "4px", display: "block" }}>
+                    নিরাপত্তাজনিত কারণে সরাসরি ইমেইল পরিবর্তন করা যাবে না।
+                  </span>
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{
+                display: "flex", justifyContent: "flex-end", gap: "10px",
+                marginTop: "25px", borderTop: "1px solid #eee", paddingTop: "15px"
+              }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact"
+                  onClick={() => { setProfileSettingsOpen(false); setProfileErrorState(""); setProfileSuccess(""); }}
+                  disabled={profileLoading}
+                >
+                  বাতিল (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-compact"
+                  disabled={profileLoading}
+                >
+                  {profileLoading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-save"></i>} সংরক্ষণ করুন (Save)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Change Modal Overlay */}
+      {passwordChangeOpen && (
+        <div className="modal-overlay" style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 11000
+        }}>
+          <div className="modal-content" style={{
+            background: "white", padding: "30px", borderRadius: "12px",
+            width: "100%", maxWidth: "450px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+            color: "#333", position: "relative"
+          }}>
+            <div className="modal-header" style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "15px"
+            }}>
+              <h2 style={{ margin: 0, fontSize: "1.3rem", color: "var(--primary-dark)" }}>পাসওয়ার্ড পরিবর্তন (Change Password)</h2>
+              <button className="close-btn" style={{
+                background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer", color: "#666"
+              }} onClick={() => { setPasswordChangeOpen(false); setPasswordError(""); setPasswordSuccess(""); }}>
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePassword}>
+              {passwordError && (
+                <div className="modal-alert modal-alert-danger">
+                  <i className="fas fa-exclamation-circle"></i>
+                  <span>{passwordError}</span>
+                </div>
+              )}
+              {passwordSuccess && (
+                <div className="modal-alert modal-alert-success">
+                  <i className="fas fa-check-circle"></i>
+                  <span>{passwordSuccess}</span>
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>নতুন পাসওয়ার্ড (New Password)</label>
+                  <input
+                    type="password"
+                    className="cfg-input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    placeholder="কমপক্ষে ৬টি ক্যারেক্টার"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #ddd" }}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>পাসওয়ার্ড নিশ্চিত করুন (Confirm Password)</label>
+                  <input
+                    type="password"
+                    className="cfg-input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    placeholder="পাসওয়ার্ডটি পুনরায় টাইপ করুন"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #ddd" }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{
+                display: "flex", justifyContent: "flex-end", gap: "10px",
+                marginTop: "25px", borderTop: "1px solid #eee", paddingTop: "15px"
+              }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-compact"
+                  onClick={() => { setPasswordChangeOpen(false); setPasswordError(""); setPasswordSuccess(""); }}
+                  disabled={passwordLoading}
+                >
+                  বাতিল (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-compact"
+                  disabled={passwordLoading}
+                >
+                  {passwordLoading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-key"></i>} পরিবর্তন করুন (Update)
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

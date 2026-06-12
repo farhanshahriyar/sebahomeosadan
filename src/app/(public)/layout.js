@@ -48,8 +48,11 @@ export default async function PublicLayout({ children }) {
     ]);
 
     if (categoriesRes.data) {
-      // Find main categories (subjects)
-      const subjects = categoriesRes.data.filter((c) => !c.parent_id);
+      // Find main categories (subjects) - excluding footer-specific pages
+      const excludedNavbarSlugs = ["about-us", "services", "privacy-policy"];
+      const subjects = categoriesRes.data.filter(
+        (c) => !c.parent_id && !excludedNavbarSlugs.includes(c.slug)
+      );
       // Map topics as children of subjects
       categories = subjects.map((subject) => {
         const topics = categoriesRes.data.filter((c) => c.parent_id === subject.id);

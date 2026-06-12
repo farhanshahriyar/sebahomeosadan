@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { fetchSystemStatus } from "@/app/dashboard/status/actions";
+import SystemLogsWidget from "./SystemLogsWidget";
 
 export default function StatusDashboard({ initialData }) {
   const [data, setData] = useState(initialData);
@@ -223,6 +224,8 @@ export default function StatusDashboard({ initialData }) {
           </table>
         </div>
       </div>
+
+      <SystemLogsWidget showMetrics={false} />
 
       <style jsx>{`
         .status-dashboard {

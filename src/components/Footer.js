@@ -37,9 +37,9 @@ export default function Footer({ siteConfig }) {
           <div className="footer-col">
             <h4>অন্যান্য</h4>
             <ul>
-              <li><Link href="/contact">আমাদের সম্পর্কে জানুন</Link></li>
-              <li><Link href="#">আমাদের পরিষেবা জানুন</Link></li>
-              <li><Link href="#">গোপনীয়তা নীতি</Link></li>
+              <li><Link href="/about">আমাদের সম্পর্কে জানুন</Link></li>
+              <li><Link href="/services">আমাদের পরিষেবা জানুন</Link></li>
+              <li><Link href="/privacy">গোপনীয়তা নীতি</Link></li>
             </ul>
           </div>
           <div className="footer-col">

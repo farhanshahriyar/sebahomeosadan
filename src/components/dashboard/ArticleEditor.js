@@ -19,18 +19,18 @@ function reconstructLine(items) {
   let lineStr = items[0].str || "";
   let lastX = items[0].transform[4];
   let lastWidth = items[0].width || 0;
-  
+
   for (let i = 1; i < items.length; i++) {
     const item = items[i];
     const currStr = item.str || "";
     const currX = item.transform[4];
-    
-    const hasExplicitSpace = 
-      lineStr.endsWith(" ") || 
-      currStr.startsWith(" ") || 
-      currStr === " " || 
+
+    const hasExplicitSpace =
+      lineStr.endsWith(" ") ||
+      currStr.startsWith(" ") ||
+      currStr === " " ||
       lineStr === " ";
-    
+
     if (hasExplicitSpace) {
       if (lineStr.endsWith(" ") && currStr.startsWith(" ")) {
         lineStr += currStr.trimStart();
@@ -45,7 +45,7 @@ function reconstructLine(items) {
         lineStr += currStr;
       }
     }
-    
+
     lastX = currX;
     lastWidth = item.width || 0;
   }
@@ -165,7 +165,7 @@ function cleanBanglaPdfText(text) {
     [/\bঅসতসর্ক\b/g, "অতিরিক্ত"],
     [/\bলক্ষণ নলা\b/g, "লক্ষণগুলো"],
     [/\bলক্ষণ িব\b/g, "লক্ষণ বা"],
-    
+
     [/ যকবল /g, " কেবল "],
     [/ যকাননা /g, " কোনো "],
     [/ যরাগ /g, " রোগ "],
@@ -250,7 +250,7 @@ function cleanBanglaPdfText(text) {
   for (const [pattern, replacement] of replacements) {
     cleaned = cleaned.replace(pattern, replacement);
   }
-  
+
   // Specific contextual replacements
   cleaned = cleaned.replace(/ না থাকা নে\b/g, " না থাকা নয়");
   cleaned = cleaned.replace(/ ততটা নে\b/g, " ততটা নয়");
@@ -264,7 +264,7 @@ function cleanBanglaPdfText(text) {
   return cleaned;
 }
 
-export default function ArticleEditor({ article, onSave, onCancel }) {
+export default function ArticleEditor({ article, onSave, onCancel, lockCategory = false }) {
   const [title, setTitle] = useState(article?.title || "");
   const [slug, setSlug] = useState(article?.slug || "");
   const [categoryId, setCategoryId] = useState(article?.category_id || "");
@@ -296,6 +296,10 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
   const [importing, setImporting] = useState(false);
+  const [showLineSpacingDropdown, setShowLineSpacingDropdown] = useState(false);
+  const [isCustomSpacingOpen, setIsCustomSpacingOpen] = useState(false);
+  const [customSpacingValue, setCustomSpacingValue] = useState("1.8");
+  const lineSpacingDropdownRef = useRef(null);
   const [userRole, setUserRole] = useState("author");
 
   const fileInputRef = useRef(null);
@@ -399,12 +403,12 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
       if (data) {
         setCategories(data);
       }
-      
+
       // Auto-select the newly created suggested topic
       if (res?.data?.id) {
         setSelectedTopicId(res.data.id);
       }
-      
+
       // Reset suggest form
       setSuggestedTopicName("");
       setShowSuggestModal(false);
@@ -479,6 +483,18 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     return () => window.removeEventListener("click", handleClose);
   }, [showExportDropdown]);
 
+  // Close line spacing dropdown on outside click
+  useEffect(() => {
+    if (!showLineSpacingDropdown) return;
+    const handleClose = (e) => {
+      if (lineSpacingDropdownRef.current && !lineSpacingDropdownRef.current.contains(e.target)) {
+        setShowLineSpacingDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClose);
+    return () => document.removeEventListener("mousedown", handleClose);
+  }, [showLineSpacingDropdown]);
+
   const handleDropdownToggle = (e) => {
     e.stopPropagation();
     setShowBlockDropdown((prev) => !prev);
@@ -526,7 +542,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
 
   const handleEditorInput = useCallback(() => {
     const html = syncContentFromEditor();
-    
+
     // Debounce saving to history
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -541,6 +557,18 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     if (e.key === " " || e.key === "Enter") {
       const html = syncContentFromEditor();
       if (html !== undefined) pushToHistory(html);
+    }
+
+    // Ctrl+A — select all content within the editor only
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      if (editorRef.current) {
+        const range = document.createRange();
+        range.selectNodeContents(editorRef.current);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
     }
 
     // Override Ctrl+Z/Y to use our history
@@ -692,13 +720,187 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
   };
 
   const handleClearFormatting = () => {
-    if (editorRef.current) editorRef.current.focus();
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+
+    // 1. Remove inline formatting (bold, italic, underline, font, etc.)
     document.execCommand("removeFormat", false, null);
-    // Also reset block to paragraph
+    // Reset block to paragraph
     document.execCommand("formatBlock", false, "p");
+
+    // 2. Also strip inline style attributes from selected blocks
+    //    (removeFormat does NOT clear style="line-height:..." etc.)
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+
+      // Collect all elements in the selection range that have a style attribute
+      const collectStyledElements = (root) => {
+        const elements = [];
+        if (!root) return elements;
+
+        const walk = (node) => {
+          if (node.nodeType === 1) { // Element node
+            if (node.hasAttribute("style")) {
+              elements.push(node);
+            }
+            // Also walk children
+            for (let child = node.firstChild; child; child = child.nextSibling) {
+              walk(child);
+            }
+          }
+        };
+
+        // If selection is collapsed, just find the ancestor block
+        if (range.collapsed) {
+          let node = range.startContainer;
+          while (node && node !== editorRef.current) {
+            if (node.nodeType === 1 && node.hasAttribute("style")) {
+              elements.push(node);
+            }
+            node = node.parentNode;
+          }
+        } else {
+          // Walk the common ancestor to find all styled elements in the range
+          const ancestor = range.commonAncestorContainer.nodeType === 1
+            ? range.commonAncestorContainer
+            : range.commonAncestorContainer.parentNode;
+
+          if (ancestor) {
+            walk(ancestor);
+            // Filter to only elements that intersect the selection
+            return elements.filter(el => range.intersectsNode(el));
+          }
+        }
+        return elements;
+      };
+
+      const styledElements = collectStyledElements(editorRef.current);
+      styledElements.forEach(el => {
+        // Remove all inline styles set by our editor features
+        el.removeAttribute("style");
+      });
+    }
+
     syncContentFromEditor();
     const html = editorRef.current?.innerHTML || "";
     pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+  };
+
+  // --- Line Spacing Helpers ---
+  const getSelectedBlock = () => {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    let node = sel.anchorNode;
+    if (!node) return null;
+    // Walk up to find the nearest block element inside the editor
+    while (node && node !== editorRef.current) {
+      if (node.nodeType === 1) {
+        const display = window.getComputedStyle(node).display;
+        if (display === "block" || display === "list-item") return node;
+      }
+      node = node.parentNode;
+    }
+    return null;
+  };
+
+  const applyLineSpacing = (value) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+
+    // Collect all block-level elements that are fully or partially in the selection
+    const range = sel.getRangeAt(0);
+    const blocks = [];
+
+    const collectBlocks = (node) => {
+      if (!node || node === editorRef.current) return;
+      if (node.nodeType === 1) {
+        const display = window.getComputedStyle(node).display;
+        if (display === "block" || display === "list-item") {
+          blocks.push(node);
+          return;
+        }
+      }
+      if (node.parentNode && node.parentNode !== editorRef.current) {
+        collectBlocks(node.parentNode);
+      }
+    };
+
+    if (range.collapsed) {
+      // Cursor is in a single position, apply to the current block
+      collectBlocks(range.startContainer);
+    } else {
+      // Multi-selection: walk through all nodes in the range
+      const walker = document.createTreeWalker(
+        range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentNode,
+        NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode: (node) => {
+            if (range.intersectsNode(node)) {
+              const display = window.getComputedStyle(node).display;
+              if (display === "block" || display === "list-item") {
+                return NodeFilter.FILTER_ACCEPT;
+              }
+            }
+            return NodeFilter.FILTER_SKIP;
+          }
+        }
+      );
+      let current = walker.nextNode();
+      while (current) {
+        blocks.push(current);
+        current = walker.nextNode();
+      }
+      // If no blocks found, fall back to ancestor block
+      if (blocks.length === 0) {
+        collectBlocks(range.startContainer);
+      }
+    }
+
+    // De-duplicate and apply
+    const uniqueBlocks = [...new Set(blocks)];
+    uniqueBlocks.forEach(block => {
+      block.style.lineHeight = String(value);
+    });
+
+    syncContentFromEditor();
+    const html = editorRef.current?.innerHTML || "";
+    pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+    setShowLineSpacingDropdown(false);
+  };
+
+  const addSpaceBeforeParagraph = () => {
+    const block = getSelectedBlock();
+    if (block) {
+      block.style.marginTop = "16px";
+      syncContentFromEditor();
+      const html = editorRef.current?.innerHTML || "";
+      pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+    }
+    setShowLineSpacingDropdown(false);
+  };
+
+  const removeSpaceAfterParagraph = () => {
+    const block = getSelectedBlock();
+    if (block) {
+      block.style.marginBottom = "0px";
+      syncContentFromEditor();
+      const html = editorRef.current?.innerHTML || "";
+      pushToHistory(html === "<br>" || html === "<div><br></div>" ? "" : html);
+    }
+    setShowLineSpacingDropdown(false);
+  };
+
+  const getCurrentLineSpacing = () => {
+    const block = getSelectedBlock();
+    if (block) {
+      const lh = block.style.lineHeight;
+      if (lh) return lh;
+    }
+    return null;
   };
 
   const getWordAndCharCount = () => {
@@ -714,17 +916,17 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
     html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
     html = html.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
-    
+
     const lines = html.split("\n");
     let inUl = false;
     let inOl = false;
     const processedLines = [];
-    
+
     for (let line of lines) {
       const trimmed = line.trim();
       const ulMatch = trimmed.match(/^[\*\-\+] (.*$)/i);
       const olMatch = trimmed.match(/^\d+\. (.*$)/i);
-      
+
       if (ulMatch) {
         if (inOl) {
           processedLines.push("</ol>");
@@ -754,7 +956,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
           processedLines.push("</ol>");
           inOl = false;
         }
-        
+
         if (trimmed !== "") {
           if (!trimmed.startsWith("<h") && !trimmed.startsWith("<blockquote") && !trimmed.startsWith("<ul") && !trimmed.startsWith("<ol") && !trimmed.startsWith("<li")) {
             processedLines.push(`<p>${trimmed}</p>`);
@@ -766,10 +968,10 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         }
       }
     }
-    
+
     if (inUl) processedLines.push("</ul>");
     if (inOl) processedLines.push("</ol>");
-    
+
     html = processedLines.join("\n");
     html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
     html = html.replace(/__(.+?)__/g, '<b>$1</b>');
@@ -777,7 +979,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     html = html.replace(/\b_(.+?)_\b/g, '<i>$1</i>');
     html = html.replace(/`(.*?)`/g, '<code>$1</code>');
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-    
+
     return html;
   };
 
@@ -793,7 +995,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
     md = md.replace(/<i>(.*?)<\/i>/g, '*$1*');
     md = md.replace(/<em>(.*?)<\/em>/g, '*$1*');
     md = md.replace(/<code>(.*?)<\/code>/g, '`$1`');
-    
+
     md = md.replace(/<ul>\s*([\s\S]*?)\s*<\/ul>/g, (match, body) => {
       return body.replace(/<li>(.*?)<\/li>/g, '- $1\n');
     });
@@ -846,7 +1048,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
           for (let i = 1; i <= totalPages; i++) {
             const page = await pdfObj.getPage(i);
             const textContent = await page.getTextContent();
-            
+
             // Group text items into lines based on Y position
             const lines = [];
             let currentLineItems = [];
@@ -1243,7 +1445,7 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             <h1 className="post-title" style={{ marginTop: "12px", marginBottom: "16px", fontWeight: "700" }}>
               {title || "শিরোনামহীন আর্টিকেল"}
             </h1>
-            
+
             <div className="post-meta" style={{ marginBottom: "24px" }}>
               {authorName && (
                 <span>
@@ -1273,14 +1475,14 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
             )}
 
             {excerpt && (
-              <blockquote 
-                style={{ 
-                  margin: "0 0 24px 0", 
-                  padding: "12px 18px", 
-                  borderLeft: "4px solid var(--primary)", 
-                  background: "#f9f9f9", 
-                  fontStyle: "italic", 
-                  fontSize: "14px", 
+              <blockquote
+                style={{
+                  margin: "0 0 24px 0",
+                  padding: "12px 18px",
+                  borderLeft: "4px solid var(--primary)",
+                  background: "#f9f9f9",
+                  fontStyle: "italic",
+                  fontSize: "14px",
                   color: "#555",
                   borderRadius: "0 8px 8px 0"
                 }}
@@ -1348,656 +1550,744 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
         </div>
       ) : (
         <div className="editor-form">
-        {/* Title */}
-        <div className="form-group">
-          <label>শিরোনাম *</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="আর্টিকেলের শিরোনাম লিখুন..."
-            style={{ fontSize: "14px", fontWeight: 600 }}
-          />
-        </div>
-
-        {/* Slug */}
-        <div className="form-group">
-          <label>স্লাগ (URL)</label>
-          <div className="input-group">
-            <span className="input-group-text">
-              /
-            </span>
+          {/* Title */}
+          <div className="form-group">
+            <label>শিরোনাম *</label>
             <input
               type="text"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="auto-generated-slug"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="আর্টিকেলের শিরোনাম লিখুন..."
+              style={{ fontSize: "14px", fontWeight: 600 }}
             />
           </div>
-        </div>
 
-        {/* Subject Selection */}
-        <div className="form-group">
-          <label>প্রধান বিষয় (Subject) *</label>
-          <select
-            value={selectedSubjectId}
-            onChange={(e) => {
-              setSelectedSubjectId(e.target.value);
-              setSelectedTopicId(""); // Reset topic selection when subject changes
-            }}
-          >
-            <option value="" disabled>বিষয় নির্বাচন করুন...</option>
-            {categories.filter(c => !c.parent_id).map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Topic Selection */}
-        <div className="form-group">
-          <label>টপিক (Topic/Subcategory)</label>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <select
-              value={selectedTopicId}
-              onChange={(e) => setSelectedTopicId(e.target.value)}
-              style={{ flex: 1 }}
-            >
-              <option value="">টপিক নির্বাচন করুন (ঐচ্ছিক)...</option>
-              {categories
-                .filter(c => c.parent_id === selectedSubjectId)
-                .map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name} {!cat.is_active && "(অনুমোদন পেন্ডিং)"}
-                  </option>
-                ))}
-            </select>
-            <button
-              type="button"
-              className="btn btn-secondary btn-compact"
-              onClick={() => {
-                if (!selectedSubjectId) {
-                  alert("দয়া করে প্রথমে একটি বিষয় নির্বাচন করুন।");
-                  return;
-                }
-                setSuggestError(null);
-                setShowSuggestModal(true);
-              }}
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
-            >
-              <i className="fas fa-plus" /> টপিক প্রস্তাব করুন
-            </button>
-          </div>
-        </div>
-
-        {/* Cover Image Upload */}
-        <CoverImageUpload
-          value={coverImage}
-          onChange={setCoverImage}
-        />
-
-        {/* Excerpt */}
-        <div className="form-group">
-          <label>সংক্ষিপ্ত বিবরণ</label>
-          <textarea
-            value={excerpt}
-            onChange={(e) => setExcerpt(e.target.value)}
-            placeholder="আর্টিকেলের সংক্ষিপ্ত বিবরণ (হোমপেজে দেখানো হবে)..."
-            style={{ minHeight: "60px" }}
-          />
-        </div>
-
-        {/* Content - Rich WYSIWYG Editor */}
-        <div className="form-group">
-          <label>কন্টেন্ট *</label>
-          <div className="editor-toolbar-advanced">
-            {/* Block formatting dropdown */}
-            <div className="toolbar-dropdown-container">
-              <button
-                type="button"
-                className="toolbar-dropdown-trigger"
-                onClick={handleDropdownToggle}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <span>{activeBlockStyle}</span>
-                <i className="fas fa-chevron-down" style={{ fontSize: "10px", marginLeft: "6px" }} />
-              </button>
-              
-              {showBlockDropdown && (
-                <div className="toolbar-dropdown-menu">
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("p");
-                      setActiveBlockStyle("Paragraph");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <span>Paragraph</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("h1");
-                      setActiveBlockStyle("Heading 1");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <span style={{ fontWeight: "bold", fontSize: "14px" }}>H1 Heading 1</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("h2");
-                      setActiveBlockStyle("Heading 2");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <span style={{ fontWeight: "bold", fontSize: "13px" }}>H2 Heading 2</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("h3");
-                      setActiveBlockStyle("Heading 3");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <span style={{ fontWeight: "bold", fontSize: "12px" }}>H3 Heading 3</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("quote");
-                      setActiveBlockStyle("Quote");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <i className="fas fa-quote-left" style={{ fontSize: "11px", marginRight: "6px" }} /> Quote
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("ul");
-                      setActiveBlockStyle("Bulleted List");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <i className="fas fa-list-ul" style={{ fontSize: "11px", marginRight: "6px" }} /> Bulleted List
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-dropdown-item"
-                    onClick={() => {
-                      applyBlockStyle("ol");
-                      setActiveBlockStyle("Numbered List");
-                      setShowBlockDropdown(false);
-                    }}
-                  >
-                    <i className="fas fa-list-ol" style={{ fontSize: "11px", marginRight: "6px" }} /> Numbered List
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="toolbar-divider" />
-
-            {/* Inline Styles */}
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("bold")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Bold (Ctrl+B)"
-              style={{ fontWeight: "bold" }}
-            >
-              B
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("italic")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Italic (Ctrl+I)"
-              style={{ fontStyle: "italic" }}
-            >
-              I
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("underline")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Underline"
-              style={{ textDecoration: "underline" }}
-            >
-              U
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("strikeThrough")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Strikethrough"
-              style={{ textDecoration: "line-through" }}
-            >
-              S
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => {
-                // Wrap selection in <code>
-                const sel = window.getSelection();
-                if (sel.rangeCount && !sel.isCollapsed) {
-                  const range = sel.getRangeAt(0);
-                  const code = document.createElement("code");
-                  range.surroundContents(code);
-                  syncContentFromEditor();
-                  const html = editorRef.current?.innerHTML || "";
-                  pushToHistory(html);
-                }
-              }}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Code"
-            >
-              &lt;&gt;
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={handleClearFormatting}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Clear Selection Formatting"
-            >
-              T
-            </button>
-
-            <div className="toolbar-divider" />
-
-            {/* Alignments */}
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("justifyLeft")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Align Left"
-            >
-              <i className="fas fa-align-left" />
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("justifyCenter")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Align Center"
-            >
-              <i className="fas fa-align-center" />
-            </button>
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={() => execFormat("justifyRight")}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Align Right"
-            >
-              <i className="fas fa-align-right" />
-            </button>
-
-            <div className="toolbar-divider" />
-
-            {/* Link */}
-            <button
-              type="button"
-              className="toolbar-btn"
-              onClick={handleInsertLink}
-              onMouseDown={(e) => e.preventDefault()}
-              title="Insert Link"
-            >
-              <i className="fas fa-link" />
-            </button>
-
-            {/* Undo/Redo & Source/Clear on Right */}
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
-              <button
-                type="button"
-                className="toolbar-btn"
-                onClick={handleUndo}
-                disabled={historyIndex <= 0}
-                onMouseDown={(e) => e.preventDefault()}
-                title="Undo (Ctrl+Z)"
-                style={{ opacity: historyIndex <= 0 ? 0.4 : 1, cursor: historyIndex <= 0 ? "not-allowed" : "pointer" }}
-              >
-                <i className="fas fa-undo" />
-              </button>
-              <button
-                type="button"
-                className="toolbar-btn"
-                onClick={handleRedo}
-                disabled={historyIndex >= history.length - 1}
-                onMouseDown={(e) => e.preventDefault()}
-                title="Redo (Ctrl+Y)"
-                style={{ opacity: historyIndex >= history.length - 1 ? 0.4 : 1, cursor: historyIndex >= history.length - 1 ? "not-allowed" : "pointer" }}
-              >
-                <i className="fas fa-redo" />
-              </button>
-              <button
-                type="button"
-                className="toolbar-btn"
-                onClick={() => setIsPreviewOpen(true)}
-                title="প্রিভিউ (Preview)"
-                style={{ color: "var(--primary)", borderColor: "rgba(13, 122, 62, 0.3)" }}
-              >
-                <i className="fas fa-eye" />
-              </button>
-              <button
-                type="button"
-                className={`toolbar-btn${isSourceMode ? " toolbar-btn-active" : ""}`}
-                onClick={() => {
-                  if (isSourceMode) {
-                    // Switching from source to WYSIWYG
-                    setContent(sourceHtml);
-                    pushToHistory(sourceHtml);
-                    setIsSourceMode(false);
-                  } else {
-                    // Switching to source view
-                    syncContentFromEditor();
-                    setSourceHtml(content);
-                    setIsSourceMode(true);
-                  }
-                }}
-                onMouseDown={(e) => e.preventDefault()}
-                title={isSourceMode ? "ভিজ্যুয়াল মোডে ফিরুন" : "HTML সোর্স দেখুন"}
-                style={isSourceMode ? { background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" } : {}}
-              >
-                <i className="fas fa-code" />
-              </button>
-              <button
-                type="button"
-                className="toolbar-btn-text"
-                onClick={handleClearFormatting}
-                onMouseDown={(e) => e.preventDefault()}
-                title="Clear Formatting"
-              >
-                Clear formatting
-              </button>
-            </div>
-          </div>
-
-          <div className="wysiwyg-editor-container">
-            {isSourceMode ? (
-              <textarea
-                className="source-code-editor"
-                value={sourceHtml}
-                onChange={(e) => setSourceHtml(e.target.value)}
-                spellCheck={false}
-                style={{
-                  width: "100%",
-                  minHeight: "320px",
-                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
-                  fontSize: "13px",
-                  lineHeight: "1.7",
-                  padding: "20px",
-                  border: "1px solid #e4e6eb",
-                  borderTop: "none",
-                  borderBottom: "none",
-                  borderRadius: "0",
-                  resize: "vertical",
-                  background: "#1e1e2e",
-                  color: "#cdd6f4",
-                  outline: "none",
-                  tabSize: 2,
-                }}
+          {/* Slug */}
+          <div className="form-group">
+            <label>স্লাগ (URL)</label>
+            <div className="input-group">
+              <span className="input-group-text">
+                /
+              </span>
+              <input
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="auto-generated-slug"
               />
-            ) : (
-              <div
-                ref={editorRef}
-                className="wysiwyg-editable"
-                contentEditable
-                suppressContentEditableWarning
-                onInput={handleEditorInput}
-                onKeyDown={handleEditorKeyDown}
-                onBlur={() => syncContentFromEditor()}
-                data-placeholder="আর্টিকেলের মূল কন্টেন্ট এখানে লিখুন..."
-                style={{
-                  minHeight: "320px",
-                  padding: "20px",
-                  border: "1px solid #e4e6eb",
-                  borderTop: "none",
-                  borderBottom: "none",
-                  borderRadius: "0",
-                  outline: "none",
-                  fontSize: "15px",
-                  lineHeight: "1.8",
-                  color: "#1a1a2e",
-                  background: "#ffffff",
-                  overflowY: "auto",
-                }}
-              />
-            )}
+            </div>
           </div>
 
-          <div className="editor-footer">
-            <div className="editor-counter">
-              {getWordAndCharCount().chars} characters | {getWordAndCharCount().words} words
-            </div>
-            
-            <div className="footer-actions">
-              <button
-                type="button"
-                className="footer-btn"
-                onClick={() => {
-                  setMdText("");
-                  setIsMdInOpen(true);
-                }}
-              >
-                MD In
-              </button>
-              <button
-                type="button"
-                className="footer-btn footer-btn-green"
-                onClick={() => {
-                  syncContentFromEditor();
-                  const md = htmlToMd(content);
-                  setMdText(md);
-                  setIsMdOutOpen(true);
-                }}
-              >
-                MD Out
-              </button>
-              <button
-                type="button"
-                className="footer-btn"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importing}
-                style={importing ? { opacity: 0.7, cursor: "wait" } : {}}
-              >
-                {importing ? (
-                  <><i className="fas fa-spinner fa-spin" style={{ marginRight: "5px" }} /> ইনপোর্ট হচ্ছে...</>
-                ) : (
-                  <>Import</>
-                )}
-              </button>
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  className="footer-btn footer-btn-green"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowExportDropdown((prev) => !prev);
+          {!lockCategory ? (
+            <>
+              {/* Subject Selection */}
+              <div className="form-group">
+                <label>প্রধান বিষয় (Subject) *</label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => {
+                    setSelectedSubjectId(e.target.value);
+                    setSelectedTopicId(""); // Reset topic selection when subject changes
                   }}
                 >
-                  Export <i className="fas fa-chevron-up" style={{ fontSize: "9px", marginLeft: "4px" }} />
-                </button>
-                {showExportDropdown && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: "100%",
-                      right: 0,
-                      marginBottom: "4px",
-                      background: "#fff",
-                      border: "1px solid #e4e6eb",
-                      borderRadius: "8px",
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                      minWidth: "160px",
-                      zIndex: 100,
-                      overflow: "hidden",
-                    }}
+                  <option value="" disabled>বিষয় নির্বাচন করুন...</option>
+                  {categories.filter(c => !c.parent_id).map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Topic Selection */}
+              <div className="form-group">
+                <label>টপিক (Topic/Subcategory)</label>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <select
+                    value={selectedTopicId}
+                    onChange={(e) => setSelectedTopicId(e.target.value)}
+                    style={{ flex: 1 }}
                   >
+                    <option value="">টপিক নির্বাচন করুন (ঐচ্ছিক)...</option>
+                    {categories
+                      .filter(c => c.parent_id === selectedSubjectId)
+                      .map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} {!cat.is_active && "(অনুমোদন পেন্ডিং)"}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    onClick={() => {
+                      if (!selectedSubjectId) {
+                        alert("দয়া করে প্রথমে একটি বিষয় নির্বাচন করুন।");
+                        return;
+                      }
+                      setSuggestError(null);
+                      setShowSuggestModal(true);
+                    }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
+                  >
+                    <i className="fas fa-plus" /> টপিক প্রস্তাব করুন
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="form-group">
+              <label>ক্যাটাগরি (Category)</label>
+              <input
+                type="text"
+                readOnly
+                value={categories.find(c => c.id === categoryId)?.name || "সিস্টেম পেজ"}
+                style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+              />
+            </div>
+          )}
+
+          {/* Cover Image Upload */}
+          <CoverImageUpload
+            value={coverImage}
+            onChange={setCoverImage}
+          />
+
+          {/* Excerpt */}
+          <div className="form-group">
+            <label>সংক্ষিপ্ত বিবরণ</label>
+            <textarea
+              value={excerpt}
+              onChange={(e) => setExcerpt(e.target.value)}
+              placeholder="আর্টিকেলের সংক্ষিপ্ত বিবরণ (হোমপেজে দেখানো হবে)..."
+              style={{ minHeight: "60px" }}
+            />
+          </div>
+
+          {/* Content - Rich WYSIWYG Editor */}
+          <div className="form-group">
+            <label>কন্টেন্ট *</label>
+            <div className="editor-toolbar-advanced">
+              {/* Block formatting dropdown */}
+              <div className="toolbar-dropdown-container">
+                <button
+                  type="button"
+                  className="toolbar-dropdown-trigger"
+                  onClick={handleDropdownToggle}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <span>{activeBlockStyle}</span>
+                  <i className="fas fa-chevron-down" style={{ fontSize: "10px", marginLeft: "6px" }} />
+                </button>
+
+                {showBlockDropdown && (
+                  <div className="toolbar-dropdown-menu">
                     <button
                       type="button"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        padding: "10px 16px",
-                        border: "none",
-                        background: "transparent",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                        color: "#333",
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("p");
+                        setActiveBlockStyle("Paragraph");
+                        setShowBlockDropdown(false);
                       }}
-                      onMouseOver={(e) => e.target.style.background = "#f0faf5"}
-                      onMouseOut={(e) => e.target.style.background = "transparent"}
-                      onClick={handleExportHTML}
                     >
-                      <i className="fas fa-code" style={{ marginRight: "8px", color: "#0d7a3e" }} />
-                      HTML ফাইল (.html)
+                      <span>Paragraph</span>
                     </button>
                     <button
                       type="button"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        padding: "10px 16px",
-                        border: "none",
-                        background: "transparent",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                        color: "#333",
-                        borderTop: "1px solid #f0f0f0",
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("h1");
+                        setActiveBlockStyle("Heading 1");
+                        setShowBlockDropdown(false);
                       }}
-                      onMouseOver={(e) => e.target.style.background = "#f0faf5"}
-                      onMouseOut={(e) => e.target.style.background = "transparent"}
-                      onClick={handleExportMd}
                     >
-                      <i className="fas fa-hashtag" style={{ marginRight: "8px", color: "#0d7a3e" }} />
-                      Markdown (.md)
+                      <span style={{ fontWeight: "bold", fontSize: "14px" }}>H1 Heading 1</span>
                     </button>
                     <button
                       type="button"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        padding: "10px 16px",
-                        border: "none",
-                        background: "transparent",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                        color: "#333",
-                        borderTop: "1px solid #f0f0f0",
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("h2");
+                        setActiveBlockStyle("Heading 2");
+                        setShowBlockDropdown(false);
                       }}
-                      onMouseOver={(e) => e.target.style.background = "#f0faf5"}
-                      onMouseOut={(e) => e.target.style.background = "transparent"}
-                      onClick={handleExportTxt}
                     >
-                      <i className="fas fa-file-alt" style={{ marginRight: "8px", color: "#0d7a3e" }} />
-                      Plain Text (.txt)
+                      <span style={{ fontWeight: "bold", fontSize: "13px" }}>H2 Heading 2</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("h3");
+                        setActiveBlockStyle("Heading 3");
+                        setShowBlockDropdown(false);
+                      }}
+                    >
+                      <span style={{ fontWeight: "bold", fontSize: "12px" }}>H3 Heading 3</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("quote");
+                        setActiveBlockStyle("Quote");
+                        setShowBlockDropdown(false);
+                      }}
+                    >
+                      <i className="fas fa-quote-left" style={{ fontSize: "11px", marginRight: "6px" }} /> Quote
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("ul");
+                        setActiveBlockStyle("Bulleted List");
+                        setShowBlockDropdown(false);
+                      }}
+                    >
+                      <i className="fas fa-list-ul" style={{ fontSize: "11px", marginRight: "6px" }} /> Bulleted List
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        applyBlockStyle("ol");
+                        setActiveBlockStyle("Numbered List");
+                        setShowBlockDropdown(false);
+                      }}
+                    >
+                      <i className="fas fa-list-ol" style={{ fontSize: "11px", marginRight: "6px" }} /> Numbered List
                     </button>
                   </div>
                 )}
               </div>
+
+              <div className="toolbar-divider" />
+
+              {/* Inline Styles */}
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("bold")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Bold (Ctrl+B)"
+                style={{ fontWeight: "bold" }}
+              >
+                B
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("italic")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Italic (Ctrl+I)"
+                style={{ fontStyle: "italic" }}
+              >
+                I
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("underline")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Underline"
+                style={{ textDecoration: "underline" }}
+              >
+                U
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("strikeThrough")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Strikethrough"
+                style={{ textDecoration: "line-through" }}
+              >
+                S
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => {
+                  // Wrap selection in <code>
+                  const sel = window.getSelection();
+                  if (sel.rangeCount && !sel.isCollapsed) {
+                    const range = sel.getRangeAt(0);
+                    const code = document.createElement("code");
+                    range.surroundContents(code);
+                    syncContentFromEditor();
+                    const html = editorRef.current?.innerHTML || "";
+                    pushToHistory(html);
+                  }
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Code"
+              >
+                &lt;&gt;
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={handleClearFormatting}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Clear Selection Formatting"
+              >
+                T
+              </button>
+
+              <div className="toolbar-divider" />
+
+              {/* Alignments */}
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("justifyLeft")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Align Left"
+              >
+                <i className="fas fa-align-left" />
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("justifyCenter")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Align Center"
+              >
+                <i className="fas fa-align-center" />
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => execFormat("justifyRight")}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Align Right"
+              >
+                <i className="fas fa-align-right" />
+              </button>
+
+              <div className="toolbar-divider" />
+
+              {/* Line Spacing Dropdown */}
+              <div className="toolbar-dropdown-container" ref={lineSpacingDropdownRef}>
+                <button
+                  type="button"
+                  className="toolbar-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowLineSpacingDropdown((prev) => !prev);
+                  }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title="Line Spacing"
+                >
+                  <i className="fas fa-arrows-alt-v" />
+                </button>
+
+                {showLineSpacingDropdown && (
+                  <div className="toolbar-dropdown-menu linespacing-dropdown">
+                    <div className="linespacing-header">Line Spacing</div>
+                    {["1.0", "1.15", "1.5", "2.0", "2.5", "3.0"].map((val) => {
+                      const currentLH = getCurrentLineSpacing();
+                      const isActive = currentLH === val;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          className={`toolbar-dropdown-item${isActive ? " linespacing-active" : ""}`}
+                          onClick={() => applyLineSpacing(val)}
+                          onMouseDown={(e) => e.preventDefault()}
+                        >
+                          {isActive && <i className="fas fa-check linespacing-check" />}
+                          <span style={{ marginLeft: isActive ? "0" : "22px" }}>{val}</span>
+                        </button>
+                      );
+                    })}
+                    <div className="linespacing-divider" />
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => {
+                        setShowLineSpacingDropdown(false);
+                        const currentLH = getCurrentLineSpacing();
+                        setCustomSpacingValue(currentLH || "1.8");
+                        setIsCustomSpacingOpen(true);
+                      }}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <i className="fas fa-sliders-h" style={{ fontSize: "11px", marginRight: "8px", color: "#667085" }} />
+                      Line Spacing Options...
+                    </button>
+                    <div className="linespacing-divider" />
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => addSpaceBeforeParagraph()}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <i className="fas fa-arrow-up" style={{ fontSize: "10px", marginRight: "8px", color: "#667085" }} />
+                      Add Space Before Paragraph
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-dropdown-item"
+                      onClick={() => removeSpaceAfterParagraph()}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <i className="fas fa-arrow-down" style={{ fontSize: "10px", marginRight: "8px", color: "#667085" }} />
+                      Remove Space After Paragraph
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="toolbar-divider" />
+
+              {/* Link */}
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={handleInsertLink}
+                onMouseDown={(e) => e.preventDefault()}
+                title="Insert Link"
+              >
+                <i className="fas fa-link" />
+              </button>
+
+              {/* Undo/Redo & Source/Clear on Right */}
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="toolbar-btn"
+                  onClick={handleUndo}
+                  disabled={historyIndex <= 0}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title="Undo (Ctrl+Z)"
+                  style={{ opacity: historyIndex <= 0 ? 0.4 : 1, cursor: historyIndex <= 0 ? "not-allowed" : "pointer" }}
+                >
+                  <i className="fas fa-undo" />
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-btn"
+                  onClick={handleRedo}
+                  disabled={historyIndex >= history.length - 1}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title="Redo (Ctrl+Y)"
+                  style={{ opacity: historyIndex >= history.length - 1 ? 0.4 : 1, cursor: historyIndex >= history.length - 1 ? "not-allowed" : "pointer" }}
+                >
+                  <i className="fas fa-redo" />
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-btn"
+                  onClick={() => setIsPreviewOpen(true)}
+                  title="প্রিভিউ (Preview)"
+                  style={{ color: "var(--primary)", borderColor: "rgba(13, 122, 62, 0.3)" }}
+                >
+                  <i className="fas fa-eye" />
+                </button>
+                <button
+                  type="button"
+                  className={`toolbar-btn${isSourceMode ? " toolbar-btn-active" : ""}`}
+                  onClick={() => {
+                    if (isSourceMode) {
+                      // Switching from source to WYSIWYG
+                      setContent(sourceHtml);
+                      pushToHistory(sourceHtml);
+                      setIsSourceMode(false);
+                    } else {
+                      // Switching to source view
+                      syncContentFromEditor();
+                      setSourceHtml(content);
+                      setIsSourceMode(true);
+                    }
+                  }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title={isSourceMode ? "ভিজ্যুয়াল মোডে ফিরুন" : "HTML সোর্স দেখুন"}
+                  style={isSourceMode ? { background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" } : {}}
+                >
+                  <i className="fas fa-code" />
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-btn-text"
+                  onClick={handleClearFormatting}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title="Clear Formatting"
+                >
+                  Clear formatting
+                </button>
+              </div>
             </div>
+
+            <div className="wysiwyg-editor-container">
+              {isSourceMode ? (
+                <textarea
+                  className="source-code-editor"
+                  value={sourceHtml}
+                  onChange={(e) => setSourceHtml(e.target.value)}
+                  spellCheck={false}
+                  style={{
+                    width: "100%",
+                    minHeight: "320px",
+                    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+                    fontSize: "13px",
+                    lineHeight: "1.7",
+                    padding: "20px",
+                    border: "1px solid #e4e6eb",
+                    borderTop: "none",
+                    borderBottom: "none",
+                    borderRadius: "0",
+                    resize: "vertical",
+                    background: "#1e1e2e",
+                    color: "#cdd6f4",
+                    outline: "none",
+                    tabSize: 2,
+                  }}
+                />
+              ) : (
+                <div
+                  ref={editorRef}
+                  className="wysiwyg-editable"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={handleEditorInput}
+                  onKeyDown={handleEditorKeyDown}
+                  onBlur={() => syncContentFromEditor()}
+                  data-placeholder="আর্টিকেলের মূল কন্টেন্ট এখানে লিখুন..."
+                  style={{
+                    minHeight: "320px",
+                    padding: "20px",
+                    border: "1px solid #e4e6eb",
+                    borderTop: "none",
+                    borderBottom: "none",
+                    borderRadius: "0",
+                    outline: "none",
+                    fontSize: "15px",
+                    lineHeight: "1.8",
+                    color: "#1a1a2e",
+                    background: "#ffffff",
+                    overflowY: "auto",
+                  }}
+                />
+              )}
+            </div>
+
+            <div className="editor-footer">
+              <div className="editor-counter">
+                {getWordAndCharCount().chars} characters | {getWordAndCharCount().words} words
+              </div>
+
+              <div className="footer-actions">
+                <button
+                  type="button"
+                  className="footer-btn"
+                  onClick={() => {
+                    setMdText("");
+                    setIsMdInOpen(true);
+                  }}
+                >
+                  MD In
+                </button>
+                <button
+                  type="button"
+                  className="footer-btn footer-btn-green"
+                  onClick={() => {
+                    syncContentFromEditor();
+                    const md = htmlToMd(content);
+                    setMdText(md);
+                    setIsMdOutOpen(true);
+                  }}
+                >
+                  MD Out
+                </button>
+                <button
+                  type="button"
+                  className="footer-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                  style={importing ? { opacity: 0.7, cursor: "wait" } : {}}
+                >
+                  {importing ? (
+                    <><i className="fas fa-spinner fa-spin" style={{ marginRight: "5px" }} /> ইনপোর্ট হচ্ছে...</>
+                  ) : (
+                    <>Import</>
+                  )}
+                </button>
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className="footer-btn footer-btn-green"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowExportDropdown((prev) => !prev);
+                    }}
+                  >
+                    Export <i className="fas fa-chevron-up" style={{ fontSize: "9px", marginLeft: "4px" }} />
+                  </button>
+                  {showExportDropdown && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "100%",
+                        right: 0,
+                        marginBottom: "4px",
+                        background: "#fff",
+                        border: "1px solid #e4e6eb",
+                        borderRadius: "8px",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                        minWidth: "160px",
+                        zIndex: 100,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "10px 16px",
+                          border: "none",
+                          background: "transparent",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          color: "#333",
+                        }}
+                        onMouseOver={(e) => e.target.style.background = "#f0faf5"}
+                        onMouseOut={(e) => e.target.style.background = "transparent"}
+                        onClick={handleExportHTML}
+                      >
+                        <i className="fas fa-code" style={{ marginRight: "8px", color: "#0d7a3e" }} />
+                        HTML ফাইল (.html)
+                      </button>
+                      <button
+                        type="button"
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "10px 16px",
+                          border: "none",
+                          background: "transparent",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          color: "#333",
+                          borderTop: "1px solid #f0f0f0",
+                        }}
+                        onMouseOver={(e) => e.target.style.background = "#f0faf5"}
+                        onMouseOut={(e) => e.target.style.background = "transparent"}
+                        onClick={handleExportMd}
+                      >
+                        <i className="fas fa-hashtag" style={{ marginRight: "8px", color: "#0d7a3e" }} />
+                        Markdown (.md)
+                      </button>
+                      <button
+                        type="button"
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "10px 16px",
+                          border: "none",
+                          background: "transparent",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          color: "#333",
+                          borderTop: "1px solid #f0f0f0",
+                        }}
+                        onMouseOver={(e) => e.target.style.background = "#f0faf5"}
+                        onMouseOut={(e) => e.target.style.background = "transparent"}
+                        onClick={handleExportTxt}
+                      >
+                        <i className="fas fa-file-alt" style={{ marginRight: "8px", color: "#0d7a3e" }} />
+                        Plain Text (.txt)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              accept=".doc,.docx,.pdf,.txt,.md,.html,.htm"
+              onChange={handleImportFile}
+            />
           </div>
 
-          <input
-            type="file"
-            ref={fileInputRef}
-            style={{ display: "none" }}
-            accept=".doc,.docx,.pdf,.txt,.md,.html,.htm"
-            onChange={handleImportFile}
-          />
-        </div>
+          {/* Tags */}
+          <div className="form-group">
+            <label>ট্যাগ (কমা দিয়ে আলাদা করুন)</label>
+            <input
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="এনাটমি, ফিজিওলজি, হোমিওপ্যাথি"
+            />
+          </div>
 
-        {/* Tags */}
-        <div className="form-group">
-          <label>ট্যাগ (কমা দিয়ে আলাদা করুন)</label>
-          <input
-            type="text"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="এনাটমি, ফিজিওলজি, হোমিওপ্যাথি"
-          />
-        </div>
-
-        {/* Action Buttons */}
-        <div
-          style={{
-            display: "flex",
-            gap: "12px",
-            justifyContent: "flex-end",
-            marginTop: "30px",
-            flexWrap: "wrap",
-            borderTop: "1px solid #eee",
-            paddingTop: "24px"
-          }}
-        >
-          <button
-            className="btn btn-secondary btn-compact"
-            onClick={() => setIsPreviewOpen(true)}
-            type="button"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          {/* Action Buttons */}
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              justifyContent: "flex-end",
+              marginTop: "30px",
+              flexWrap: "wrap",
+              borderTop: "1px solid #eee",
+              paddingTop: "24px"
+            }}
           >
-            <i className="fas fa-eye" /> প্রিভিউ
-          </button>
-          <button
-            className="btn btn-secondary btn-compact"
-            onClick={() => handleSave("draft")}
-            disabled={saving}
-          >
-            <i className="fas fa-save" />{" "}
-            {saving ? "সংরক্ষণ হচ্ছে..." : "ড্রাফট সংরক্ষণ"}
-          </button>
-          <button
-            className="btn btn-info btn-compact"
-            onClick={() => handleSave("review")}
-            disabled={saving}
-          >
-            <i className="fas fa-paper-plane" /> রিভিউতে পাঠান
-          </button>
-          {(userRole === "admin" || userRole === "super_admin") ? (
             <button
-              className="btn btn-primary btn-compact"
-              onClick={() => handleSave("published")}
+              className="btn btn-secondary btn-compact"
+              onClick={() => setIsPreviewOpen(true)}
+              type="button"
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <i className="fas fa-eye" /> প্রিভিউ
+            </button>
+            <button
+              className="btn btn-secondary btn-compact"
+              onClick={() => handleSave("draft")}
               disabled={saving}
             >
-              <i className="fas fa-globe" /> প্রকাশ করুন
+              <i className="fas fa-save" />{" "}
+              {saving ? "সংরক্ষণ হচ্ছে..." : "ড্রাফট সংরক্ষণ"}
             </button>
-          ) : (
             <button
-              className="btn btn-primary btn-compact"
-              onClick={() => {
-                // Authors can't save as "published", so demote "published" to "draft"
-                const targetStatus = article?.status === "published" ? "draft" : (article?.status || "draft");
-                handleSave(targetStatus);
-              }}
+              className="btn btn-info btn-compact"
+              onClick={() => handleSave("review")}
               disabled={saving}
             >
-              <i className="fas fa-save" /> সংরক্ষণ করুন
+              <i className="fas fa-paper-plane" /> রিভিউতে পাঠান
             </button>
-          )}
+            {(userRole === "admin" || userRole === "super_admin") ? (
+              <button
+                className="btn btn-primary btn-compact"
+                onClick={() => handleSave("published")}
+                disabled={saving}
+              >
+                <i className="fas fa-globe" /> প্রকাশ করুন
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary btn-compact"
+                onClick={() => {
+                  // Authors can't save as "published", so demote "published" to "draft"
+                  const targetStatus = article?.status === "published" ? "draft" : (article?.status || "draft");
+                  handleSave(targetStatus);
+                }}
+                disabled={saving}
+              >
+                <i className="fas fa-save" /> সংরক্ষণ করুন
+              </button>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Suggest Topic Modal */}
@@ -2125,6 +2415,63 @@ export default function ArticleEditor({ article, onSave, onCancel }) {
                 </button>
                 <button type="button" className="btn btn-primary btn-compact" onClick={() => setIsMdOutOpen(false)}>
                   বন্ধ করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Line Spacing Modal */}
+      {isCustomSpacingOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "400px" }}>
+            <div className="modal-header">
+              <h2 style={{ fontSize: "1.2rem", margin: 0, color: "var(--primary-dark)" }}>Line Spacing Options</h2>
+              <button className="close-btn" onClick={() => setIsCustomSpacingOpen(false)} style={{ background: "none", border: "none", fontSize: "1.6rem", cursor: "pointer" }}>&times;</button>
+            </div>
+            <div style={{ marginTop: "15px" }}>
+              <div className="form-group" style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontSize: "13px", fontWeight: "600", color: "#333" }}>Line Spacing Value</label>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <input
+                    type="range"
+                    min="0.8"
+                    max="4.0"
+                    step="0.05"
+                    value={customSpacingValue}
+                    onChange={(e) => setCustomSpacingValue(e.target.value)}
+                    style={{ flex: 1, accentColor: "var(--primary)" }}
+                  />
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="5.0"
+                    step="0.05"
+                    value={customSpacingValue}
+                    onChange={(e) => setCustomSpacingValue(e.target.value)}
+                    style={{ width: "70px", padding: "8px 10px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "14px", textAlign: "center" }}
+                  />
+                </div>
+                <div style={{ marginTop: "12px", padding: "14px 16px", background: "#f8f9fa", borderRadius: "8px", border: "1px solid #eee" }}>
+                  <p style={{ margin: 0, fontSize: "14px", lineHeight: customSpacingValue, color: "#333" }}>
+                    এটি একটি প্রিভিউ টেক্সট। আপনি এখানে দেখতে পাচ্ছেন আপনার নির্বাচিত লাইন স্পেসিং কিভাবে দেখাবে। (This is a preview of how the line spacing will appear in your content.)
+                  </p>
+                </div>
+              </div>
+              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+                <button type="button" className="btn btn-secondary btn-compact" onClick={() => setIsCustomSpacingOpen(false)}>
+                  বাতিল (Cancel)
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-compact"
+                  onClick={() => {
+                    applyLineSpacing(customSpacingValue);
+                    setIsCustomSpacingOpen(false);
+                  }}
+                >
+                  <i className="fas fa-check" style={{ marginRight: "6px" }} /> প্রয়োগ করুন (Apply)
                 </button>
               </div>
             </div>

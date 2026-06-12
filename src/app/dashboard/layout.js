@@ -17,7 +17,7 @@ export default async function DashboardLayout({ children }) {
   // Fetch user profile/role from a profiles table (fallback to email metadata)
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("full_name, role, avatar_url")
+    .select("full_name, role, avatar_url, is_banned")
     .eq("id", user.id)
     .single();
 
@@ -25,6 +25,11 @@ export default async function DashboardLayout({ children }) {
   console.log("[Dashboard] user.id:", user.id);
   console.log("[Dashboard] profile:", profile);
   console.log("[Dashboard] profileError:", profileError);
+
+  // If user is banned, redirect to login
+  if (profile?.is_banned) {
+    redirect("/login?error=banned");
+  }
 
   const userInfo = {
     name: profile?.full_name || user.email?.split("@")[0] || "User",

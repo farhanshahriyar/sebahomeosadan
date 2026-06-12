@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 
-export default function SystemLogsWidget() {
+export default function SystemLogsWidget({ showMetrics = false }) {
   const [logs, setLogs] = useState([]);
 
   // Generate some realistic looking Supabase Edge Logs
@@ -49,28 +49,30 @@ export default function SystemLogsWidget() {
 
   return (
     <div className="status-dashboard">
-      <div className="status-metrics">
-        <div className="metric-card">
-          <div className="metric-header">API Requests (24h)</div>
-          <div className="metric-value">124.5k</div>
-          <div className="metric-trend positive"><i className="fas fa-arrow-up"></i> 12% vs last day</div>
+      {showMetrics && (
+        <div className="status-metrics">
+          <div className="metric-card">
+            <div className="metric-header">API Requests (24h)</div>
+            <div className="metric-value">124.5k</div>
+            <div className="metric-trend positive"><i className="fas fa-arrow-up"></i> 12% vs last day</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-header">Avg. Latency</div>
+            <div className="metric-value">42ms</div>
+            <div className="metric-trend positive"><i className="fas fa-arrow-down"></i> 3ms faster</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-header">Error Rate (5xx)</div>
+            <div className="metric-value">0.02%</div>
+            <div className="metric-trend stable"><i className="fas fa-minus"></i> Stable</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-header">Database Load</div>
+            <div className="metric-value">14%</div>
+            <div className="metric-trend positive"><i className="fas fa-arrow-down"></i> Normal</div>
+          </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-header">Avg. Latency</div>
-          <div className="metric-value">42ms</div>
-          <div className="metric-trend positive"><i className="fas fa-arrow-down"></i> 3ms faster</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-header">Error Rate (5xx)</div>
-          <div className="metric-value">0.02%</div>
-          <div className="metric-trend stable"><i className="fas fa-minus"></i> Stable</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-header">Database Load</div>
-          <div className="metric-value">14%</div>
-          <div className="metric-trend positive"><i className="fas fa-arrow-down"></i> Normal</div>
-        </div>
-      </div>
+      )}
 
       <div className="dashboard-panel logs-panel">
         <div className="panel-header" style={{ borderBottom: '1px solid #333' }}>
