@@ -1,6 +1,24 @@
 import Link from "next/link";
 
-export default function Footer() {
+export default function Footer({ siteConfig }) {
+  const siteName = siteConfig?.site_name || "Popular Homeo Center";
+  const phone = siteConfig?.contact_phone || "+8801720970031";
+  const email = siteConfig?.contact_email || "";
+  const address = siteConfig?.contact_address || "খঞ্জনপুর, জয়পুরহাট";
+
+  const facebookUrl = siteConfig?.facebook_url || "https://www.facebook.com/";
+  const youtubeUrl = siteConfig?.youtube_url || "https://www.youtube.com/";
+  const twitterUrl = siteConfig?.twitter_url || "https://twitter.com/";
+  const instagramUrl = siteConfig?.instagram_url || "";
+
+  // Only show social links that have a URL
+  const socialLinks = [
+    { url: facebookUrl, icon: "fab fa-facebook-f", label: "Facebook" },
+    { url: twitterUrl, icon: "fab fa-twitter", label: "Twitter" },
+    { url: youtubeUrl, icon: "fab fa-youtube", label: "YouTube" },
+    { url: instagramUrl, icon: "fab fa-instagram", label: "Instagram" },
+  ].filter((s) => s.url && s.url.trim() !== "");
+
   return (
     <footer className="footer" id="site-footer">
       <div className="container">
@@ -13,7 +31,7 @@ export default function Footer() {
                   Md. Amirul Islam Pramanik
                 </a>
               </li>
-              <li><a href="tel:+8801989449877">+8801989449877</a></li>
+              {phone && <li><a href={`tel:${phone}`}>{phone}</a></li>}
             </ul>
           </div>
           <div className="footer-col">
@@ -27,27 +45,30 @@ export default function Footer() {
           <div className="footer-col">
             <h4>আমাদের ঠিকানা</h4>
             <ul>
-              <li><span>খঞ্জনপুর, জয়পুরহাট</span></li>
-              <li><span>বাংলাদেশ</span></li>
+              <li><span>{address}</span></li>
+              {email && <li><a href={`mailto:${email}`}>{email}</a></li>}
             </ul>
           </div>
           <div className="footer-col">
             <h4>Follow Us</h4>
             <div className="social-links">
-              <a href="https://www.facebook.com/" className="social-link" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
-                <i className="fab fa-facebook-f" />
-              </a>
-              <a href="https://twitter.com/" className="social-link" target="_blank" rel="noopener noreferrer" aria-label="Twitter">
-                <i className="fab fa-twitter" />
-              </a>
-              <a href="https://www.youtube.com/" className="social-link" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
-                <i className="fab fa-youtube" />
-              </a>
+              {socialLinks.map((social) => (
+                <a
+                  key={social.label}
+                  href={social.url}
+                  className="social-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={social.label}
+                >
+                  <i className={social.icon} />
+                </a>
+              ))}
             </div>
           </div>
         </div>
         <div className="footer-bottom">
-          © {new Date().getFullYear()} Good Health Homeo Care। সর্বস্বত্ব সংরক্ষিত।
+          © {new Date().getFullYear()} {siteName}। সর্বস্বত্ব সংরক্ষিত।
         </div>
       </div>
     </footer>

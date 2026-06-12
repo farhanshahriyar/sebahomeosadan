@@ -1,12 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ContactPage() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [contactInfo, setContactInfo] = useState({
+    phone: "01720970031",
+    email: "amirul1068@gmail.com",
+    address: "খঞ্জনপুর, জয়পুরহাট\nবাংলাদেশ",
+  });
+
+  useEffect(() => {
+    async function fetchConfig() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("site_config")
+        .select("contact_phone, contact_email, contact_address")
+        .eq("id", 1)
+        .maybeSingle();
+      if (data) {
+        setContactInfo({
+          phone: data.contact_phone || contactInfo.phone,
+          email: data.contact_email || contactInfo.email,
+          address: data.contact_address || contactInfo.address,
+        });
+      }
+    }
+    fetchConfig();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,7 +51,7 @@ export default function ContactPage() {
           {
             name,
             email,
-            subject: subject || "কোনো বিষয় নেই",
+            subject: subject || "কোনো বিষয় নেই",
             message,
             is_read: false
           }
@@ -44,7 +68,7 @@ export default function ContactPage() {
       }, 5000);
     } catch (err) {
       console.error("Error submitting contact message:", err);
-      setError("বার্তাটি পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
+      setError("বার্তাটি পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
     } finally {
       setLoading(false);
     }
@@ -64,13 +88,13 @@ export default function ContactPage() {
           <div className="contact-form" id="contact-form">
             <h2>আমাদের একটি বার্তা পাঠান</h2>
             {success ? (
-              <div 
-                style={{ 
-                  background: "#e8f5e9", 
-                  color: "#0d7a3e", 
-                  padding: "16px", 
-                  borderRadius: "8px", 
-                  marginBottom: "20px", 
+              <div
+                style={{
+                  background: "#e8f5e9",
+                  color: "#0d7a3e",
+                  padding: "16px",
+                  borderRadius: "8px",
+                  marginBottom: "20px",
                   fontWeight: "600",
                   display: "flex",
                   alignItems: "center",
@@ -78,17 +102,17 @@ export default function ContactPage() {
                 }}
               >
                 <i className="fas fa-check-circle" style={{ fontSize: "20px" }}></i>
-                আপনার বার্তাটি সফলভাবে পাঠানো হয়েছে! ধন্যবাদ।
+                আপনার বার্তাটি সফলভাবে পাঠানো হয়েছে! ধন্যবাদ।
               </div>
             ) : null}
             {error ? (
-              <div 
-                style={{ 
-                  background: "#ffebee", 
-                  color: "#c62828", 
-                  padding: "16px", 
-                  borderRadius: "8px", 
-                  marginBottom: "20px", 
+              <div
+                style={{
+                  background: "#ffebee",
+                  color: "#c62828",
+                  padding: "16px",
+                  borderRadius: "8px",
+                  marginBottom: "20px",
                   fontWeight: "600",
                   display: "flex",
                   alignItems: "center",
@@ -131,15 +155,15 @@ export default function ContactPage() {
             <h2>যোগাযোগের তথ্য</h2>
             <ul>
               <li>
-                <h5>01720970031</h5>
+                <h5>{contactInfo.phone}</h5>
                 <span>ফোন নম্বর</span>
               </li>
               <li>
-                <h5>amirul1068@gmail.com</h5>
+                <h5>{contactInfo.email}</h5>
                 <span>ইমেইল ঠিকানা</span>
               </li>
               <li>
-                <h5>খঞ্জনপুর, জয়পুরহাট<br />বাংলাদেশ</h5>
+                <h5 dangerouslySetInnerHTML={{ __html: contactInfo.address.replace(/\n/g, '<br />') }} />
                 <span>রাস্তার ঠিকানা</span>
               </li>
             </ul>
@@ -151,7 +175,7 @@ export default function ContactPage() {
             src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14452.090196255396!2d88.99680482504839!3d25.101098024376792!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39fc91e5a27bc89d%3A0xaa1008c50e27f342!2sKhanjanpur!5e0!3m2!1sen!2sbd!4v1622114571933!5m2!1sen!2sbd"
             allowFullScreen
             loading="lazy"
-            title="Good Health Homeo Care মানচিত্র"
+            title="Popular Homeo Center মানচিত্র"
           />
         </div>
       </div>

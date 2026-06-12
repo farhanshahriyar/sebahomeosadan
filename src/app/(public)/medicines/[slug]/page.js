@@ -13,11 +13,11 @@ export async function generateMetadata({ params }) {
     .single();
 
   if (!medicine) {
-    return { title: "ওষুধ খুঁজে পাওয়া যায়নি | Good Health Homeo Care" };
+    return { title: "ওষুধ খুঁজে পাওয়া যায়নি | Popular Homeo Center" };
   }
 
   return {
-    title: `${medicine.name} | Good Health Homeo Care`,
+    title: `${medicine.name} | Popular Homeo Center`,
     description: `${medicine.name} - হোমিওপ্যাথি ওষুধের বিস্তারিত তথ্য ও লক্ষণাবলী।`,
   };
 }

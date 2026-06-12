@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import MedicinesList from "./MedicinesList";
 
 export const metadata = {
-  title: "ওষুধ পরিচিতি | Good Health Homeo Care",
+  title: "ওষুধ পরিচিতি | Popular Homeo Center",
   description: "হোমিওপ্যাথি ওষুধের তালিকা এবং পরিচিতি। একোনাইটাম নেপেলাস, এ্যাকটিয়া রেসিমোসা সহ বিভিন্ন ওষুধ সম্পর্কে জানুন।",
 };
 

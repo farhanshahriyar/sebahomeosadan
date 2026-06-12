@@ -5,9 +5,7 @@ import Sidebar from "@/components/Sidebar";
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
-  console.log("[generateMetadata] raw slug:", slug);
   const decodedSlug = decodeURIComponent(slug);
-  console.log("[generateMetadata] decoded slug:", decodedSlug);
   const { data: article } = await supabase
     .from("articles")
     .select("title, excerpt, categories(name)")
@@ -17,11 +15,11 @@ export async function generateMetadata({ params }) {
     .maybeSingle();
 
   if (!article) {
-    return { title: "পোস্ট পাওয়া যায়নি | Good Health Homeo Care" };
+    return { title: "পোস্ট পাওয়া যায়নি | Popular Homeo Center" };
   }
 
   return {
-    title: `${article.title} | Good Health Homeo Care`,
+    title: `${article.title} | Popular Homeo Center`,
     description: article.excerpt || article.title,
   };
 }
@@ -48,25 +46,42 @@ function formatBanglaTime(dateString) {
   });
 }
 
+function getReadingTime(content) {
+  if (!content) return 1;
+  const wordCount = content.replace(/<[^>]+>/g, '').split(/\s+/).length;
+  return Math.max(1, Math.ceil(wordCount / 200));
+}
+
 export default async function ArticlePage({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
 
-  // Fetch the article
-  console.log("[ArticlePage] raw slug:", slug);
   const decodedSlug = decodeURIComponent(slug);
-  console.log("[ArticlePage] decoded slug:", decodedSlug);
 
-  const { data: article, error } = await supabase
-    .from("articles")
-    .select("*, categories(name)")
-    .or(`slug.eq.${slug},slug.eq.${decodedSlug}`)
-    .eq("status", "published")
-    .limit(1)
-    .maybeSingle();
+  // Fetch article and site_config in parallel
+  const [articleRes, configRes] = await Promise.all([
+    supabase
+      .from("articles")
+      .select("*, categories(name)")
+      .or(`slug.eq.${slug},slug.eq.${decodedSlug}`)
+      .eq("status", "published")
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("site_config")
+      .select("show_author_name, show_reading_time")
+      .eq("id", 1)
+      .maybeSingle()
+  ]);
+
+  const article = articleRes.data;
+  const error = articleRes.error;
+  const siteConfig = configRes.data;
+
+  const showAuthor = siteConfig?.show_author_name !== false;
+  const showReadingTime = siteConfig?.show_reading_time !== false;
 
   if (error || !article) {
-    console.error("[ArticlePage] Fetch error:", error, "Article:", article);
     notFound();
   }
 
@@ -75,7 +90,7 @@ export default async function ArticlePage({ params }) {
     .from("articles")
     .update({ views: (article.views || 0) + 1 })
     .eq("id", article.id)
-    .then(() => {});
+    .then(() => { });
 
   // Fetch previous and next articles for navigation
   const { data: prevArticle } = await supabase
@@ -103,9 +118,15 @@ export default async function ArticlePage({ params }) {
           <span className="category">{article.categories?.name || "সাধারণ"}</span>
           <h1 className="post-title">{article.title}</h1>
           <div className="post-meta">
-            {article.author_name && <span>{article.author_name}</span>}
+            {showAuthor && article.author_name && <span>{article.author_name}</span>}
             <span>{formatBanglaDate(article.published_at)}</span>
             <span>{formatBanglaTime(article.published_at)}</span>
+            {showReadingTime && (
+              <span>
+                <i className="far fa-clock" style={{ marginRight: "4px" }} />
+                {getReadingTime(article.content)} মিনিট পড়ার সময়
+              </span>
+            )}
           </div>
 
           {article.cover_image && (

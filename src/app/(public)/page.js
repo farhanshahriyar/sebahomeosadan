@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import Testimonials from "@/components/Testimonials";
 
 export const metadata = {
-  title: "Good Health Homeo Care | চিকিৎসা সেবা ও তথ্য",
+  title: "Popular Homeo Center | চিকিৎসা সেবা ও তথ্য",
   description: "আপনার সঠিক সিদ্ধান্তই আপনাকে রাখতে পারে সুস্থ এবং সুরক্ষিত। হোমিওপ্যাথি চিকিৎসা সেবা ও পরামর্শ কেন্দ্র।",
 };
 
@@ -122,8 +122,8 @@ export default async function HomePage() {
             {displayArticles.map((article) => {
               const isExternal = article.isExternal;
               const href = isExternal ? article.href : `/articles/${article.slug || ""}`;
-              const linkProps = isExternal 
-                ? { href, target: "_blank", rel: "noopener noreferrer" } 
+              const linkProps = isExternal
+                ? { href, target: "_blank", rel: "noopener noreferrer" }
                 : { href: article.href || href };
 
               return (
@@ -164,7 +164,7 @@ export default async function HomePage() {
               );
             })}
           </div>
-          
+
           {articles && articles.length > 0 && (
             <div style={{ textAlign: "center", marginTop: "40px" }}>
               <Link href="/articles" className="btn btn-primary" style={{ padding: "10px 24px", fontSize: "14px" }}>

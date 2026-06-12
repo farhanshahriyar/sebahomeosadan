@@ -393,18 +393,18 @@ export default function DashboardShell({ userInfo, children }) {
   const viewModes =
     userInfo.role === "super_admin"
       ? [
-          { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
-          { key: "admin", label: "Admin", icon: "fas fa-user-shield", description: "Content & editorial controls" },
-          { key: "super_admin", label: "Super Admin", icon: "fas fa-shield-alt", description: "System & user controls" },
-        ]
+        { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
+        { key: "admin", label: "Admin", icon: "fas fa-user-shield", description: "Content & editorial controls" },
+        { key: "super_admin", label: "Super Admin", icon: "fas fa-shield-alt", description: "System & user controls" },
+      ]
       : userInfo.role === "admin"
         ? [
-            { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
-            { key: "admin", label: "Admin", icon: "fas fa-shield-alt", description: "Full admin controls" },
-          ]
+          { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" },
+          { key: "admin", label: "Admin", icon: "fas fa-shield-alt", description: "Full admin controls" },
+        ]
         : [
-            { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" }
-          ];
+          { key: "author", label: "Author", icon: "fas fa-pen-nib", description: "Write & manage posts" }
+        ];
 
   const currentMode = viewModes.find((m) => m.key === viewMode) || viewModes[0];
 
@@ -421,7 +421,7 @@ export default function DashboardShell({ userInfo, children }) {
           <i className={`fas fa-chevron-${collapsed ? "right" : "left"}`} />
         </button>
         <Link href="/dashboard" className="dashboard-brand">
-          <i className="fas fa-leaf"></i> <span>Good Health Homeo Care</span>
+          <i className="fas fa-leaf"></i> <span>Popular Homeo Center</span>
         </Link>
 
         {/* View Switcher Dropdown (Only for Admins) */}
@@ -554,7 +554,10 @@ export default function DashboardShell({ userInfo, children }) {
               <i className="fas fa-server"></i> <span>Status</span>
             </Link>
           )}
-          <Link href="/dashboard" className="dashboard-nav-item">
+          <Link
+            href="/dashboard/configuration"
+            className={`dashboard-nav-item ${pathname?.startsWith("/dashboard/configuration") ? "active" : ""}`}
+          >
             <i className="fas fa-cog"></i> <span>Configuration</span>
           </Link>
           <Link href="/" className="dashboard-nav-item">

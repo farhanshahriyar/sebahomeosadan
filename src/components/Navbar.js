@@ -12,7 +12,7 @@ const fixedItemsAfter = [
   { label: "ওষুধ পরিচিতি", href: "/medicines" },
 ];
 
-export default function Navbar({ categories = [] }) {
+export default function Navbar({ categories = [], siteName }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Build nav items: fixed items + dynamic categories from DB
@@ -32,7 +32,7 @@ export default function Navbar({ categories = [] }) {
     <nav className="navbar" id="main-navbar">
       <div className="container" style={{ justifyContent: "center" }}>
         <Link href="/" className="nav-brand mobile-brand">
-          <i className="fas fa-leaf" /> সেবা হোমিওসদন
+          <i className="fas fa-leaf" /> {siteName || "সেবা হোমিওসদন"}
         </Link>
         <button
           className="nav-toggle"
